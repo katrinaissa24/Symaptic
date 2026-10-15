@@ -5,6 +5,7 @@ import { readableOn, shade, tint } from '../lib/palette';
 import { SHAPE_PATHS } from './geometry';
 import { useEditor } from './EditorContext';
 import type { Dir } from './ops';
+import { perfCount } from '../lib/perf';
 
 export type IdeaRFNode = Node<{ node: MapNode }, 'idea'>;
 
@@ -21,6 +22,7 @@ function colors(n: MapNode) {
 const DASH = { solid: undefined, dashed: '7 5', dotted: '1.5 4.5' } as const;
 
 function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
+  perfCount('IdeaNode');
   const n = data.node;
   const ed = useEditor();
   const editing = ed.editingId === id;
