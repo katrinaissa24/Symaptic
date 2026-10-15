@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { WHEEL_INNER, WHEEL_OUTER } from '../lib/palette';
+import { PALETTE } from '../lib/palette';
+const WHEEL_OUTER = PALETTE.map((p) => p.hex);
 
 export interface RadialItem {
   key: string;
@@ -160,8 +161,7 @@ export function ColorWheel({
       <div className="radial wheel" style={clampPos(x, y)} onPointerDown={(e) => e.stopPropagation()}>
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           <circle cx={C} cy={C} r={R_OUT + 14} className="wheel-rim" />
-          {ring(WHEEL_OUTER, 80, R_OUT + 8, 0)}
-          {ring(WHEEL_INNER, 46, 77, Math.PI / 8)}
+          {ring(WHEEL_OUTER, 52, R_OUT + 8, 0)}
           <circle cx={C} cy={C} r={38} fill={shown} className="wheel-center" />
         </svg>
         <label className="wheel-custom" title="Custom colour">

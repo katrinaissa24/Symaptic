@@ -78,7 +78,7 @@ export function ShareDialog({
       <div className="modal share" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <header>
           <h2>Share “{doc.title}”</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">✕</button>
         </header>
 
         <div className="invite-row">
@@ -94,7 +94,7 @@ export function ShareDialog({
               <option key={r} value={r}>{ROLE_LABEL[r]}</option>
             ))}
           </select>
-          <button className="btn primary" disabled={busy || !emails.trim()} onClick={invite}>
+          <button className="btn btn-primary" disabled={busy || !emails.trim()} onClick={invite}>
             {busy ? 'Sending…' : 'Invite'}
           </button>
         </div>
@@ -154,7 +154,7 @@ export function ShareDialog({
                   : 'Visitors sign in (email or Google) to comment or edit.'}
             </small>
           </div>
-          <button className="btn" onClick={copy}>{copied ? 'Copied!' : 'Copy link'}</button>
+          <button className="btn btn-secondary" onClick={copy}>{copied ? 'Copied!' : 'Copy link'}</button>
         </div>
       </div>
     </div>

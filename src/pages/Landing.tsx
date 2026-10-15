@@ -187,7 +187,7 @@ export default function Landing() {
       <nav className="land-nav">
         <Logo />
         <div className="spacer" />
-        {user ? <Link className="btn ghost" to="/app">My maps</Link> : <Link className="btn ghost" to="/login">Sign in</Link>}
+        {user ? <Link className="btn btn-ghost" to="/app">My maps</Link> : <Link className="btn btn-ghost" to="/login">Sign in</Link>}
       </nav>
 
       <section className="hero">
@@ -196,7 +196,7 @@ export default function Landing() {
         </h1>
         <p className="lede">A colourful mind map you can shape, comment on, and share with anyone in two clicks.</p>
         <div className="hero-ctas">
-          <button className="btn primary big" onClick={start} disabled={starting}>
+          <button className="btn btn-primary btn-lg" onClick={start} disabled={starting}>
             {starting ? 'Planting your map…' : 'Start mapping. It’s free'}
           </button>
         </div>
@@ -262,7 +262,7 @@ export default function Landing() {
 
       <section className="final-cta">
         <h2>Your next idea is one click away.</h2>
-        <button className="btn primary big" onClick={start} disabled={starting}>Open a blank map</button>
+        <button className="btn btn-primary btn-lg" onClick={start} disabled={starting}>Open a blank map</button>
       </section>
 
       <footer className="land-foot">
@@ -278,7 +278,7 @@ export default function Landing() {
               <span>symaptic</span>
             </div>
             <p>A colourful place for messy, wonderful thinking. Map it, shape it, share it.</p>
-            <button className="btn primary" onClick={start} disabled={starting}>Start a map →</button>
+            <button className="btn btn-primary" onClick={start} disabled={starting}>Start a map →</button>
           </div>
           <nav className="foot-col">
             <h4>Product</h4>

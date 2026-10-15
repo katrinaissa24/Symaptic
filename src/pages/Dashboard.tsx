@@ -98,7 +98,7 @@ export default function Dashboard() {
             You’re mapping as a guest, so your maps live in this browser. <b>Sign in</b> to keep them on any device. They come
             with you.
           </p>
-          <Link className="btn" to="/login?next=/app">Sign in</Link>
+          <Link className="btn btn-secondary" to="/login?next=/app">Sign in</Link>
         </div>
       )}
       <main className="dash-main">
@@ -107,7 +107,7 @@ export default function Dashboard() {
             <button className={tab === 'mine' ? 'on' : ''} onClick={() => setTab('mine')}>My maps {mine && <i>{mine.length}</i>}</button>
             <button className={tab === 'shared' ? 'on' : ''} onClick={() => setTab('shared')}>Shared with me {shared && <i>{shared.length}</i>}</button>
           </div>
-          <button className="btn primary big" onClick={create}>＋ New map</button>
+          <button className="btn btn-primary btn-lg" onClick={create}>＋ New map</button>
         </div>
         {error && <p className="note err">{error}</p>}
 

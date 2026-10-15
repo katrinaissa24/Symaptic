@@ -103,7 +103,7 @@ export default function Login() {
             <p className="muted">
               We sent a sign-in link to <b>{email}</b>. Open it on this device and you’re in.
             </p>
-            <button className="btn ghost" onClick={() => setState('idle')}>Use a different email</button>
+            <button className="btn btn-ghost" onClick={() => setState('idle')}>Use a different email</button>
           </>
         ) : (
           <>
@@ -119,7 +119,7 @@ export default function Login() {
             </p>
             {isFirebaseConfigured && state !== 'need-email' && (
               <>
-                <button className="btn google" onClick={google}>
+                <button className="btn btn-secondary btn-lg" onClick={google}>
                   <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
                     <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
                     <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
@@ -136,7 +136,7 @@ export default function Login() {
                 <input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
               <input type="email" required placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <button className="btn primary" disabled={state === 'sending' || state === 'finishing'}>
+              <button className="btn btn-primary" disabled={state === 'sending' || state === 'finishing'}>
                 {state === 'sending' ? 'Sending…' : state === 'finishing' ? 'Signing in…' : isFirebaseConfigured ? (state === 'need-email' ? 'Sign in' : 'Email me a link') : 'Enter demo'}
               </button>
             </form>

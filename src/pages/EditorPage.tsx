@@ -55,9 +55,9 @@ export default function EditorPage() {
               : 'If it was shared with your email, sign in with that address.'}
           </p>
           {user && !user.isAnonymous ? (
-            <Link className="btn primary" to="/app">Back to my maps</Link>
+            <Link className="btn btn-primary" to="/app">Back to my maps</Link>
           ) : (
-            <Link className="btn primary" to={`/login?next=/d/${id}`}>Sign in</Link>
+            <Link className="btn btn-primary" to={`/login?next=/d/${id}`}>Sign in</Link>
           )}
         </div>
       </div>
@@ -71,7 +71,7 @@ export default function EditorPage() {
   return (
     <div className="editor-page">
       <header className="topbar">
-        <button className="icon-btn" title="My maps" onClick={() => nav(user ? '/app' : '/')}>{Icon.back}</button>
+        <button className="btn btn-ghost btn-icon" title="My maps" onClick={() => nav(user ? '/app' : '/')}>{Icon.back}</button>
         <Logo small />
         <input
           className="title-input"
@@ -95,15 +95,15 @@ export default function EditorPage() {
         <div className="spacer" />
         {(canEdit || canComment) && (
           <>
-            <button className="icon-btn" title="Undo (⌘Z)" disabled={!api.canUndo} onClick={api.undo}>{Icon.undo}</button>
-            <button className="icon-btn" title="Redo (⇧⌘Z)" disabled={!api.canRedo} onClick={api.redo}>{Icon.redo}</button>
+            <button className="btn btn-ghost btn-icon" title="Undo (⌘Z)" disabled={!api.canUndo} onClick={api.undo}>{Icon.undo}</button>
+            <button className="btn btn-ghost btn-icon" title="Redo (⇧⌘Z)" disabled={!api.canRedo} onClick={api.redo}>{Icon.redo}</button>
           </>
         )}
         {access !== 'owner' && access !== 'none' && <span className="badge">{ROLE_BADGE[access]}</span>}
         {guestError && <span className="note err slim">{guestError}</span>}
-        {!user && api.meta.linkRole === 'view' && <Link className="btn ghost" to={`/login?next=/d/${id}`}>Sign in</Link>}
+        {!user && api.meta.linkRole === 'view' && <Link className="btn btn-ghost" to={`/login?next=/d/${id}`}>Sign in</Link>}
         {access === 'owner' && user && (
-          <button className="btn primary" onClick={() => setSharing(true)}>
+          <button className="btn btn-primary" onClick={() => setSharing(true)}>
             {Icon.share} Share
           </button>
         )}

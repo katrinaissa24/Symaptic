@@ -1,0 +1,199 @@
+/* ==========================================================================
+   Symaptic design tokens. The only place colours, sizes, radii, shadows and
+   motion are defined. Everything else references these variables.
+   ========================================================================== */
+
+:root {
+  /* ---- Colour: cool neutral scale ------------------------------------- */
+  --color-bg: #fafafa;            /* page background */
+  --color-canvas: #f6f6f8;        /* map canvas */
+  --color-canvas-dot: #d9d9de;    /* grid dots */
+  --color-surface: #ffffff;       /* cards, bars, popovers */
+  --color-surface-2: #f4f4f5;     /* secondary fills, segmented tracks */
+  --color-surface-3: #e9e9ec;     /* hover fills */
+  --color-surface-inverse: #18181b;
+  --color-border: #e4e4e7;        /* hairlines */
+  --color-border-strong: #d4d4d8; /* inputs, active borders */
+  --color-text: #18181b;
+  --color-text-2: #52525b;        /* secondary */
+  --color-text-3: #71717a;        /* muted, hints: 4.6:1 on canvas */
+  --color-text-inverse: #fafafa;
+  --color-text-on-accent: #ffffff;
+
+  /* ---- Colour: one accent (indigo) ------------------------------------ */
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-active: #3730a3;
+  --color-accent-soft: #eef2ff;
+  --color-accent-soft-2: #e0e7ff;
+  --color-accent-text: #4338ca;   /* accent as text on light surfaces */
+  --color-focus: #6366f1;
+  --color-selection: #4f46e5;
+
+  /* ---- Colour: semantic ----------------------------------------------- */
+  --color-success: #16a34a;
+  --color-success-text: #15803d;
+  --color-success-soft: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-text: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-text: #b91c1c;
+  --color-danger-soft: #fef2f2;
+
+  /* ---- Colour: node palette (curated, used by ideas and branches) ------ */
+  --palette-gray: #6b7280;
+  --palette-red: #e5484d;
+  --palette-orange: #f76b15;
+  --palette-amber: #d9a21b;
+  --palette-green: #30a46c;
+  --palette-teal: #12a594;
+  --palette-blue: #0090ff;
+  --palette-violet: #6e56cf;
+  --palette-pink: #d6409f;
+
+  --color-overlay: rgba(24, 24, 27, 0.4);
+  --color-scrim: rgba(24, 24, 27, 0.08);
+
+  /* ---- Type ----------------------------------------------------------- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --text-xs: 12px;  --leading-xs: 16px;
+  --text-sm: 13px;  --leading-sm: 18px;
+  --text-md: 14px;  --leading-md: 20px;
+  --text-lg: 16px;  --leading-lg: 24px;
+  --text-xl: 20px;  --leading-xl: 28px;
+  --text-2xl: 24px; --leading-2xl: 32px;
+  --text-3xl: 32px; --leading-3xl: 40px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --tracking-tight: -0.01em;
+  --tracking-tighter: -0.02em;
+
+  /* ---- Spacing: 4px grid --------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Radius ---------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 999px; /* tags and avatars only */
+
+  /* ---- Elevation: 3 levels, layered and subtle ------------------------- */
+  --shadow-1: 0 1px 2px rgba(24, 24, 27, 0.06);
+  --shadow-2: 0 1px 2px rgba(24, 24, 27, 0.06), 0 4px 12px rgba(24, 24, 27, 0.08);
+  --shadow-3: 0 2px 4px rgba(24, 24, 27, 0.06), 0 12px 32px rgba(24, 24, 27, 0.14);
+  --ring-focus: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-focus);
+  --ring-selection: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-selection);
+
+  /* ---- Borders --------------------------------------------------------- */
+  --border-hairline: 1px solid var(--color-border);
+  --border-strong: 1px solid var(--color-border-strong);
+
+  /* ---- Motion: one duration scale, two easings ------------------------- */
+  --dur-fast: 100ms;
+  --dur: 150ms;
+  --dur-slow: 250ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---- Controls -------------------------------------------------------- */
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 36px;
+  --touch-min: 44px;
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 20px;
+  --icon-stroke: 1.75px;
+
+  /* ---- Layers ---------------------------------------------------------- */
+  --z-canvas-ui: 10;
+  --z-panel: 20;
+  --z-topbar: 30;
+  --z-menu: 100;
+  --z-dialog: 200;
+  --z-toast: 300;
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --topbar-height: 48px;
+  --panel-width: 272px;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #131316;
+  --color-canvas: #18181b;
+  --color-canvas-dot: #2c2c32;
+  --color-surface: #1f1f23;
+  --color-surface-2: #27272b;
+  --color-surface-3: #303035;
+  --color-surface-inverse: #f4f4f5;
+  --color-border: #2c2c31;
+  --color-border-strong: #3d3d44;
+  --color-text: #f4f4f5;
+  --color-text-2: #b4b4bc;
+  --color-text-3: #8e8e97;
+  --color-text-inverse: #18181b;
+  --color-text-on-accent: #ffffff;
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-active: #4f46e5;
+  --color-accent-soft: rgba(99, 102, 241, 0.16);
+  --color-accent-soft-2: rgba(99, 102, 241, 0.28);
+  --color-accent-text: #a5b4fc;
+  --color-focus: #818cf8;
+  --color-selection: #818cf8;
+
+  --color-success: #22c55e;
+  --color-success-text: #4ade80;
+  --color-success-soft: rgba(34, 197, 94, 0.14);
+  --color-warning: #f59e0b;
+  --color-warning-text: #fbbf24;
+  --color-warning-soft: rgba(245, 158, 11, 0.14);
+  --color-danger: #ef4444;
+  --color-danger-hover: #f87171;
+  --color-danger-text: #f87171;
+  --color-danger-soft: rgba(239, 68, 68, 0.14);
+
+  --palette-gray: #9ca3af;
+  --palette-red: #f2555a;
+  --palette-orange: #ff8a3d;
+  --palette-amber: #e8b534;
+  --palette-green: #3dd68c;
+  --palette-teal: #2ec5b3;
+  --palette-blue: #4da6ff;
+  --palette-violet: #9b8ae6;
+  --palette-pink: #e66bbf;
+
+  --color-overlay: rgba(0, 0, 0, 0.55);
+  --color-scrim: rgba(255, 255, 255, 0.06);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-3: 0 2px 4px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

@@ -1,5 +1,6 @@
 import { Toast as RT } from 'radix-ui';
 import { create } from 'zustand';
+import { X } from 'lucide-react';
 
 export interface ToastItem {
   id: number;
@@ -49,7 +50,10 @@ export function Toaster() {
           onOpenChange={(open) => !open && dismiss(t.id)}
         >
           <div className="toast-body">
-            <RT.Title className="toast-title">{t.title}</RT.Title>
+            <RT.Title className="toast-title">
+              <span className="toast-dot" aria-hidden />
+              {t.title}
+            </RT.Title>
             {t.description && <RT.Description className="toast-desc">{t.description}</RT.Description>}
           </div>
           {t.action && (
@@ -66,7 +70,7 @@ export function Toaster() {
             </RT.Action>
           )}
           <RT.Close className="toast-close" aria-label="Dismiss">
-            ×
+            <X />
           </RT.Close>
         </RT.Root>
       ))}

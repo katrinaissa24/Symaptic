@@ -1,11 +1,11 @@
 import type { CurveStyle, FillStyle, Graph, LineStyle, MapEdge, MapNode, Shape } from '../lib/types';
-import { BRANCH_COLORS, WHEEL_OUTER } from '../lib/palette';
+import { PALETTE } from '../lib/palette';
 import { SHAPE_LABELS } from './geometry';
 import { ShapeIcon } from './icons';
 import { incomingEdgeIds, recolor, setEdgeProps, setNodeProps } from './ops';
 
 const SHAPES = Object.keys(SHAPE_LABELS) as Shape[];
-const SWATCHES = [...BRANCH_COLORS, ...WHEEL_OUTER.filter((c) => !['#cfcfcf'].includes(c))];
+const SWATCHES = PALETTE.map((p) => p.hex);
 
 function Seg<T extends string>({ value, options, onChange }: { value?: T; options: [T, string][]; onChange(v: T): void }) {
   return (
@@ -49,7 +49,7 @@ export function Inspector({
     <aside className="inspector" onKeyDown={(e) => e.stopPropagation()}>
       <header>
         <span>{nodes.length ? `${nodes.length} idea${nodes.length > 1 ? 's' : ''}` : `${edges.length} branch${edges.length > 1 ? 'es' : ''}`}</span>
-        <button className="icon-btn" onClick={onClose} aria-label="Close style panel">✕</button>
+        <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close style panel">✕</button>
       </header>
 
       <section>
