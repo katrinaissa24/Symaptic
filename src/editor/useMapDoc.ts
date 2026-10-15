@@ -155,6 +155,7 @@ export function useMapDoc(id: string) {
       setMeta((m) => (m && sameItem(m, d) ? m : d));
       const local = graphRef.current;
       let remote: Graph = {
+        v: d.v,
         nodes: reuseCollection(local?.nodes, d.nodes ?? {}),
         edges: reuseCollection(local?.edges, d.edges ?? {}),
         comments: reuseCollection(local?.comments, d.comments ?? {}),

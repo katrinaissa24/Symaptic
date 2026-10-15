@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "seed": "node scripts/seed.mjs",
     "perf": "node scripts/perf.mjs",
-    "lighthouse": "node scripts/lighthouse.mjs"
+    "lighthouse": "node scripts/lighthouse.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "shots": "node scripts/shot.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -1,19 +1,11 @@
 import { memo } from 'react';
 import { useInternalNode, type Edge, type EdgeProps, type InternalNode } from '@xyflow/react';
-import type { MapEdge, Shape } from '../lib/types';
-import {
-  arrivalDir,
-  arrowHead,
-  boxExit,
-  branchAnchors,
-  center,
-  cubicFor,
-  strokePath,
-  taperedPath,
-  type Box,
-} from './geometry';
+import type { MapEdge } from '../lib/types';
+import { displayColor } from '../lib/palette';
+import { displayCurve, displayEdgeWidth } from './compat';
+import { arrivalDir, arrowHead, boxExit, branchAnchors, center, strokePath, type Box } from './geometry';
 
-export type BranchRFEdge = Edge<{ edge: MapEdge; targetShape: Shape; sourceShape: Shape }, 'branch'>;
+export type BranchRFEdge = Edge<{ edge: MapEdge; legacy: boolean }, 'branch'>;
 export type ThoughtRFEdge = Edge<Record<string, never>, 'thought'>;
 
 function boxOf(n: InternalNode | undefined): Box | null {
@@ -25,63 +17,37 @@ function boxOf(n: InternalNode | undefined): Box | null {
   return { x: p.x, y: p.y, w, h };
 }
 
-const DASH = { solid: undefined, dashed: '10 7', dotted: '0.5 7' } as const;
+const DASH = { solid: undefined, dashed: '6 5', dotted: '1 4' } as const;
 
+/** One connector style: a smooth 1.5–2.5px curve from node side to node side, tinted by the branch colour. */
 function BranchEdgeImpl({ id, source, target, data, selected }: EdgeProps<BranchRFEdge>) {
   const s = boxOf(useInternalNode(source));
   const t = boxOf(useInternalNode(target));
   if (!s || !t || !data) return null;
   const e = data.edge;
-  const { a, b, horizontal } = branchAnchors(s, t, data.targetShape, data.sourceShape);
-  const organic = e.curve === 'organic' && e.style === 'solid';
-  const line = strokePath(a, b, horizontal, e.curve === 'organic' ? 'bezier' : e.curve);
-  const dir = arrivalDir(a, b, horizontal, e.curve === 'organic' ? 'bezier' : e.curve);
-  const tipW = organic ? e.width * 0.4 : e.width;
+  const w = displayEdgeWidth(e.width, data.legacy);
+  const curve = displayCurve(e.curve);
+  const { a, b, horizontal } = branchAnchors(s, t);
+  const line = strokePath(a, b, horizontal, curve);
+  const dir = arrivalDir(a, b, horizontal, curve);
 
   return (
-    <g className={`branch ${selected ? 'is-selected' : ''}`}>
-      {selected && (
-        <path d={line} fill="none" stroke={e.color} strokeOpacity={0.25} strokeWidth={e.width + 12} strokeLinecap="round" />
-      )}
-      {organic ? (
-        <path d={taperedPath(cubicFor(a, b, horizontal), e.width)} fill={e.color} />
-      ) : (
-        <path
-          d={line}
-          fill="none"
-          stroke={e.color}
-          strokeWidth={e.width}
-          strokeDasharray={DASH[e.style]}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
-      {e.arrow && <path d={arrowHead(b, dir, Math.max(4, tipW * 1.4))} fill={e.color} />}
-      <path id={id} d={line} fill="none" stroke="transparent" strokeWidth={Math.max(16, e.width + 10)} className="branch-hit" />
+    <g className={`branch${selected ? ' is-selected' : ''}${e.kind === 'link' ? ' is-link' : ''}`} style={{ ['--c' as string]: displayColor(e.color) }}>
+      <path d={line} className="branch-line" strokeWidth={w} strokeDasharray={DASH[e.style]} />
+      {e.arrow && <path d={arrowHead(b, dir, Math.max(4, w * 2.2))} className="branch-arrow" />}
+      <path id={id} d={line} className="branch-hit" />
     </g>
   );
 }
 
-/** Little puffs of thought rising from a node to its comment bubble. */
+/** Thin dotted connector from an idea to its comment card. */
 function ThoughtEdgeImpl({ source, target }: EdgeProps<ThoughtRFEdge>) {
   const s = boxOf(useInternalNode(source));
   const t = boxOf(useInternalNode(target));
   if (!s || !t) return null;
-  const cloudBox: Box = { ...t, h: Math.min(t.h, 90) };
-  const a = boxExit(s, center(cloudBox));
-  const b = boxExit(cloudBox, center(s));
-  const puffs = [
-    { k: 0.18, r: 3.5 },
-    { k: 0.42, r: 5.5 },
-    { k: 0.7, r: 8 },
-  ];
-  return (
-    <g className="thought-puffs">
-      {puffs.map((p) => (
-        <ellipse key={p.k} cx={a.x + (b.x - a.x) * p.k} cy={a.y + (b.y - a.y) * p.k} rx={p.r * 1.15} ry={p.r} />
-      ))}
-    </g>
-  );
+  const a = boxExit(s, center(t));
+  const b = boxExit(t, center(s));
+  return <path className="thought-line" d={`M${a.x.toFixed(1)},${a.y.toFixed(1)} L${b.x.toFixed(1)},${b.y.toFixed(1)}`} />;
 }
 
 export const BranchEdge = memo(BranchEdgeImpl);

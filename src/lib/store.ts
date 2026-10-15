@@ -11,7 +11,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import type { AccessRole, AppUser, Graph, LinkRole, MapDoc, Patch, Role } from './types';
+import type { AccessRole, AppUser, Graph, LinkRole, MapDoc, MapNode, Patch, Role } from './types';
 import { ROOT_COLOR } from './palette';
 
 export function uid(prefix = ''): string {
@@ -20,28 +20,28 @@ export function uid(prefix = ''): string {
   return prefix + Array.from(a, (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
 }
 
-export function starterGraph(): Graph {
-  const rootId = uid('n_');
+export const SCHEMA_VERSION = 2;
+
+export function rootNode(text = 'Central idea', at = { x: 0, y: 0 }): MapNode {
   return {
-    nodes: {
-      [rootId]: {
-        id: rootId,
-        x: 0,
-        y: 0,
-        text: 'Central idea',
-        shape: 'rounded',
-        color: ROOT_COLOR,
-        fill: 'solid',
-        fontSize: 20,
-        bold: true,
-        borderWidth: 2,
-        borderStyle: 'solid',
-        root: true,
-      },
-    },
-    edges: {},
-    comments: {},
+    id: uid('n_'),
+    x: at.x,
+    y: at.y,
+    text,
+    shape: 'rounded',
+    color: ROOT_COLOR,
+    fill: 'solid',
+    fontSize: 16,
+    bold: true,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    root: true,
   };
+}
+
+export function starterGraph(): Graph {
+  const root = rootNode();
+  return { v: SCHEMA_VERSION, nodes: { [root.id]: root }, edges: {}, comments: {} };
 }
 
 export function accessFor(d: MapDoc, user: AppUser | null): AccessRole {
@@ -88,6 +88,7 @@ function newDoc(user: AppUser, id: string, title: string, graph?: Graph): MapDoc
     createdAt: now,
     updatedAt: now,
     ...(graph ?? starterGraph()),
+    v: SCHEMA_VERSION,
   };
 }
 

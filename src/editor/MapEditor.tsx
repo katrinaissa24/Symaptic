@@ -1,6 +1,8 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { perfCount } from '../lib/perf';
 import {
   ReactFlow,
+  SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
   useReactFlow,
@@ -21,19 +23,28 @@ import { CommentNode } from './CommentNode';
 import { BranchEdge, ThoughtEdge } from './Edges';
 import { ColorWheel, RadialMenu, type RadialItem } from './RadialMenu';
 import { DotGrid } from './DotGrid';
+import { Guides } from './Guides';
+import { SproutToolbar } from './SproutToolbar';
+import { ZoomControls } from './ZoomControls';
+import { snapRect } from './snap';
+import { isLegacy } from './compat';
+import { toast } from '../components/Toast';
 import { MiniMap } from './MiniMap';
 import { Icon, ShapeIcon } from './icons';
 import { SHAPE_LABELS, type Pt } from './geometry';
 import { tidy } from './layout';
-import { estimateSize, fitViewport, TWEEN_MS, MIN_ZOOM, MAX_ZOOM, easeOut } from './viewport';
+import { estimateSize, fitViewport, nodeRect, TWEEN_MS, MIN_ZOOM, MAX_ZOOM, easeOut, zoomTo } from './viewport';
 import {
   addChild,
   addComment,
   addFreeNode,
   addSibling,
+  clipboardFor,
   commentSpot,
   connect,
   duplicate,
+  navigate,
+  pasteItems,
   incomingEdgeIds,
   isMine,
   moveItems,
@@ -71,9 +82,9 @@ interface Props {
 
 // ------------------------------------------------------------ graph → React Flow (with structural reuse)
 
-type IdeaData = { node: MapNode };
+type IdeaData = { node: MapNode; legacy: boolean };
 type CommentData = { comment: MapComment };
-type BranchData = { edge: MapEdge; targetShape: Shape; sourceShape: Shape };
+type BranchData = { edge: MapEdge; legacy: boolean };
 
 const ideaDataCache = new Map<string, IdeaData>();
 const commentDataCache = new WeakMap<MapComment, CommentData>();
@@ -83,10 +94,10 @@ const branchDataCache = new WeakMap<MapEdge, BranchData>();
 const visualKey = (n: MapNode) =>
   `${n.text}\u0000${n.shape}\u0000${n.color}\u0000${n.fill}\u0000${n.fontSize}\u0000${n.bold ? 1 : 0}\u0000${n.borderWidth}\u0000${n.borderStyle}\u0000${n.root ? 1 : 0}`;
 
-function ideaData(n: MapNode): IdeaData {
+function ideaData(n: MapNode, legacy: boolean): IdeaData {
   const cached = ideaDataCache.get(n.id);
-  if (cached && (cached.node === n || visualKey(cached.node) === visualKey(n))) return cached;
-  const d = { node: n };
+  if (cached && cached.legacy === legacy && (cached.node === n || visualKey(cached.node) === visualKey(n))) return cached;
+  const d = { node: n, legacy };
   ideaDataCache.set(n.id, d);
   return d;
 }
@@ -102,10 +113,11 @@ interface SyncOpts {
 function syncNodes(prev: Node[], graph: Graph, o: SyncOpts): Node[] {
   const old = new Map(prev.map((n) => [n.id, n]));
   const out: Node[] = [];
+  const legacy = isLegacy(graph);
   let changed = prev.length !== Object.keys(graph.nodes).length + Object.keys(graph.comments).length;
   for (const n of Object.values(graph.nodes)) {
     const p = old.get(n.id);
-    const data = ideaData(n);
+    const data = ideaData(n, legacy);
     const zIndex = n.root ? 3 : 2;
     const selected = o.pendingSelect ? n.id === o.pendingSelect : !!p?.selected;
     if (p && p.data === data && p.position.x === n.x && p.position.y === n.y && p.draggable === o.canEdit && p.zIndex === zIndex && p.selected === selected) {
@@ -147,14 +159,13 @@ function syncNodes(prev: Node[], graph: Graph, o: SyncOpts): Node[] {
 function syncEdges(prev: Edge[], graph: Graph, canEdit: boolean, pendingSelect: string | null): Edge[] {
   const old = new Map(prev.map((e) => [e.id, e]));
   const out: Edge[] = [];
+  const legacy = isLegacy(graph);
   let changed = false;
   for (const e of Object.values(graph.edges)) {
-    const s = graph.nodes[e.source];
-    const t = graph.nodes[e.target];
-    if (!s || !t) continue;
+    if (!graph.nodes[e.source] || !graph.nodes[e.target]) continue;
     let data = branchDataCache.get(e);
-    if (!data || data.targetShape !== t.shape || data.sourceShape !== s.shape) {
-      data = { edge: e, targetShape: t.shape, sourceShape: s.shape };
+    if (!data || data.legacy !== legacy) {
+      data = { edge: e, legacy };
       branchDataCache.set(e, data);
     }
     const p = old.get(e.id);
@@ -189,9 +200,26 @@ interface DragSession {
   followers: string[];
   start: Map<string, Pt>;
   pos: Map<string, Pt>;
+  /** Rectangles of ideas that are not moving, for alignment guides. */
+  others: { x: number; y: number; width: number; height: number }[];
+  primarySize: { width: number; height: number };
+}
+
+/** Pixels of pointer travel within which the dragged idea snaps to a guide. */
+const SNAP_PX = 6;
+
+type Clip = ReturnType<typeof clipboardFor>;
+const CLIP_KEY = 'symaptic:clipboard';
+function readClip(): Clip | null {
+  try {
+    return JSON.parse(localStorage.getItem(CLIP_KEY) || 'null');
+  } catch {
+    return null;
+  }
 }
 
 function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canComment, user }: Props) {
+  perfCount('MapEditor');
   const rf = useReactFlow();
   const storeApi = useStoreApi();
   const [rfNodes, setRfNodes] = useState<Node[]>([]);
@@ -238,14 +266,24 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
   }, [rfNodes, rf, storeApi]);
 
   // ------------------------------------------------------------ selection
+  // Arrays are only replaced when the selected ids change, so children that receive them
+  // (inspector, menus) don't re-render on every drag frame.
+  const selKeyNow = (() => {
+    let k = '';
+    for (const n of rfNodes) if (n.selected) k += (n.type === 'idea' ? 'n' : 'c') + n.id + ',';
+    k += '|';
+    for (const e of rfEdges) if (e.selected && e.type === 'branch') k += e.id + ',';
+    return k;
+  })();
   const selection = useMemo(() => {
     const nodeIds: string[] = [];
     const commentIds: string[] = [];
     for (const n of rfNodes) if (n.selected) (n.type === 'idea' ? nodeIds : commentIds).push(n.id);
     const edgeIds: string[] = [];
     for (const e of rfEdges) if (e.selected && e.type === 'branch') edgeIds.push(e.id);
-    return { nodeIds, commentIds, edgeIds, key: nodeIds.join(',') + '|' + edgeIds.join(',') };
-  }, [rfNodes, rfEdges]);
+    return { nodeIds, commentIds, edgeIds, key: selKeyNow };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selKeyNow]);
   const { nodeIds: selectedNodeIds, commentIds: selectedCommentIds, edgeIds: selectedEdgeIds } = selection;
 
   const selectOnly = useCallback((id: string | null) => {
@@ -290,45 +328,86 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
       for (const c of Object.values(g.comments))
         if (c.nodeId && (dragged.has(c.nodeId) || followers.has(c.nodeId)) && !dragged.has(c.id)) followers.add(c.id);
       const start = new Map<string, Pt>();
-      for (const n of rfNodesRef.current) if (dragged.has(n.id) || followers.has(n.id)) start.set(n.id, { x: n.position.x, y: n.position.y });
-      drag.current = { primary: node.id, dragged, followers: [...followers], start, pos: new Map() };
+      const others: DragSession['others'] = [];
+      let primarySize = { width: 120, height: 34 };
+      for (const n of rfNodesRef.current) {
+        if (dragged.has(n.id) || followers.has(n.id)) {
+          start.set(n.id, { x: n.position.x, y: n.position.y });
+          if (n.id === node.id) {
+            const r = nodeRect(n);
+            primarySize = { width: r.width, height: r.height };
+          }
+        } else if (n.type === 'idea') others.push(nodeRect(n));
+      }
+      drag.current = { primary: node.id, dragged, followers: [...followers], start, pos: new Map(), others, primarySize };
     },
     [snapshot, ui],
   );
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const d = drag.current;
-    let all = changes;
-    if (d) {
+  // During a drag, position changes are coalesced to one React Flow update per animation frame.
+  const pendingDrag = useRef<NodeChange[] | null>(null);
+  const dragRaf = useRef<number | null>(null);
+  const flushDrag = useCallback(() => {
+    dragRaf.current = null;
+    const pend = pendingDrag.current;
+    pendingDrag.current = null;
+    if (pend?.length) setRfNodes((ns) => applyNodeChanges(pend, ns));
+  }, []);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const d = drag.current;
+      if (!d) {
+        setRfNodes((ns) => applyNodeChanges(changes, ns));
+        return;
+      }
       let primary: NodePositionChange | undefined;
+      const rest: NodeChange[] = [];
       for (const c of changes) {
         if (c.type === 'position' && c.position) {
           d.pos.set(c.id, c.position);
           if (c.id === d.primary) primary = c;
-        }
+        } else rest.push(c);
       }
-      if (primary?.position && d.followers.length) {
-        const s0 = d.start.get(d.primary)!;
-        const dx = primary.position.x - s0.x;
-        const dy = primary.position.y - s0.y;
-        const extra: NodeChange[] = [];
-        for (const f of d.followers) {
-          const fs = d.start.get(f);
-          if (!fs) continue;
-          const position = { x: fs.x + dx, y: fs.y + dy };
-          d.pos.set(f, position);
-          extra.push({ type: 'position', id: f, position, dragging: true });
-        }
-        all = [...changes, ...extra];
+      if (rest.length) setRfNodes((ns) => applyNodeChanges(rest, ns));
+      if (!primary?.position) return;
+      // Smart guides: snap the dragged idea, then move everything else by the same delta.
+      const zoom = storeApi.getState().transform[2];
+      const snapped = snapRect({ x: primary.position.x, y: primary.position.y, ...d.primarySize }, d.others, SNAP_PX / zoom);
+      ui().setGuides(snapped.guides);
+      const s0 = d.start.get(d.primary)!;
+      const dx = snapped.x - s0.x;
+      const dy = snapped.y - s0.y;
+      const moves: NodeChange[] = [];
+      for (const id of d.dragged) {
+        const cs = d.start.get(id);
+        if (!cs) continue;
+        const position = id === d.primary ? { x: snapped.x, y: snapped.y } : { x: cs.x + dx, y: cs.y + dy };
+        d.pos.set(id, position);
+        moves.push({ type: 'position', id, position, dragging: true });
       }
-    }
-    setRfNodes((ns) => applyNodeChanges(all, ns));
-  }, []);
+      for (const f of d.followers) {
+        const fs = d.start.get(f);
+        if (!fs) continue;
+        const position = { x: fs.x + dx, y: fs.y + dy };
+        d.pos.set(f, position);
+        moves.push({ type: 'position', id: f, position, dragging: true });
+      }
+      // Latest position wins; earlier unflushed moves for the same ids are superseded.
+      pendingDrag.current = moves;
+      if (dragRaf.current == null) dragRaf.current = requestAnimationFrame(flushDrag);
+    },
+    [storeApi, ui, flushDrag],
+  );
 
   const onNodeDragStop = useCallback(() => {
     const d = drag.current;
     drag.current = null;
     ui().setDragging(false);
+    ui().setGuides([]);
+    if (dragRaf.current != null) cancelAnimationFrame(dragRaf.current);
+    pendingDrag.current = null;
+    dragRaf.current = null;
     if (!d) return;
     const rounded = new Map<string, Pt>();
     for (const [id, p] of d.pos) rounded.set(id, { x: Math.round(p.x), y: Math.round(p.y) });
@@ -337,6 +416,9 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
     if (fixes.length) setRfNodes((ns) => applyNodeChanges(fixes, ns));
     commit((g) => moveItems(g, rounded), { history: false });
   }, [commit, ui]);
+  useEffect(() => () => {
+    if (dragRaf.current != null) cancelAnimationFrame(dragRaf.current);
+  }, []);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     const sel = changes.filter((c) => c.type === 'select');
@@ -406,9 +488,45 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
     [user, canComment, commit, size, rf, ui],
   );
 
+  const commentOnSelection = useCallback(() => {
+    if (!selectedNodeIds.length) {
+      toast.info('Select an idea to comment on');
+      return;
+    }
+    startComment(selectedNodeIds[0]);
+  }, [selectedNodeIds, startComment]);
+
+  const pointer = useRef<Pt | null>(null);
+
+  const copySelection = useCallback(() => {
+    if (!selectedNodeIds.length) return;
+    const clip = clipboardFor(graphRef.current, selectedNodeIds);
+    try {
+      localStorage.setItem(CLIP_KEY, JSON.stringify(clip));
+    } catch {
+      /* ignore */
+    }
+    toast.success(`Copied ${clip.nodes.length} idea${clip.nodes.length === 1 ? '' : 's'}`, { duration: 1500 });
+  }, [selectedNodeIds]);
+
+  const pasteClipboard = useCallback(() => {
+    const clip = readClip();
+    if (!clip?.nodes.length) return;
+    const minX = Math.min(...clip.nodes.map((n) => n.x));
+    const minY = Math.min(...clip.nodes.map((n) => n.y));
+    const at = pointer.current ?? { x: minX + 32, y: minY + 32 };
+    let ids: string[] = [];
+    commit((g) => {
+      const r = pasteItems(g, clip, at);
+      ids = r.ids;
+      return r.graph;
+    });
+    setTimeout(() => selectMany(ids), 0);
+  }, [commit, selectMany]);
+
   // Latest closures for the stable action object and the single keyboard listener.
-  const latest = useRef({ createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf });
-  latest.current = { createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf };
+  const latest = useRef({ createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf, fit, copySelection, pasteClipboard });
+  latest.current = { createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf, fit, copySelection, pasteClipboard };
 
   const doSprout = useCallback((from: string, dir: Dir, upX: number, upY: number, moved: boolean) => {
     const L = latest.current;
@@ -486,21 +604,56 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
       const mod = e.metaKey || e.ctrlKey;
       const one = L.selectedNodeIds.length === 1 ? L.selectedNodeIds[0] : null;
       const key = e.key.toLowerCase();
+      const viewSize = () => ({ width: storeApi.getState().width, height: storeApi.getState().height });
       if (mod && key === 'z') {
         e.preventDefault();
         if (L.canEdit || L.canComment) (e.shiftKey ? L.redo : L.undo)();
       } else if (mod && key === 'y') {
         e.preventDefault();
         if (L.canEdit || L.canComment) L.redo();
+      } else if (mod && (key === '=' || key === '+')) {
+        e.preventDefault();
+        zoomTo(L.rf, L.rf.getViewport().zoom * 1.2, viewSize());
+      } else if (mod && key === '-') {
+        e.preventDefault();
+        zoomTo(L.rf, L.rf.getViewport().zoom / 1.2, viewSize());
+      } else if (mod && key === '0') {
+        e.preventDefault();
+        zoomTo(L.rf, 1, viewSize());
+      } else if (e.shiftKey && !mod && e.key === '!') {
+        e.preventDefault();
+        L.fit();
+      } else if (e.shiftKey && !mod && e.key === ')') {
+        e.preventDefault();
+        zoomTo(L.rf, 1, viewSize());
+      } else if (mod && key === 'a') {
+        e.preventDefault();
+        L.selectMany(Object.keys(graphRef.current.nodes));
+      } else if (mod && key === 'c' && L.selectedNodeIds.length) {
+        e.preventDefault();
+        L.copySelection();
+      } else if (e.key.startsWith('Arrow') && one && !mod) {
+        const next = navigate(graphRef.current, one, e.key as 'ArrowLeft');
+        if (next) {
+          e.preventDefault();
+          L.selectOnly(next);
+        }
       } else if (!L.canEdit) {
         if ((e.key === 'Delete' || e.key === 'Backspace') && L.selectedCommentIds.length) L.deleteSelection();
+      } else if (mod && key === 'v') {
+        e.preventDefault();
+        L.pasteClipboard();
+      } else if (mod && key === 'x' && L.selectedNodeIds.length) {
+        e.preventDefault();
+        L.copySelection();
+        L.deleteSelection();
       } else if (e.key === 'Tab' && one) {
         e.preventDefault();
         L.createAndEdit((g) => addChild(g, one, L.size));
       } else if (e.key === 'Enter' && one) {
         e.preventDefault();
         L.createAndEdit((g) => addSibling(g, one, L.size) ?? addChild(g, one, L.size));
-      } else if ((e.key === 'F2' || e.key === ' ') && one) {
+      } else if (e.key === 'F2' && one) {
         e.preventDefault();
         ui().setEditingId(one);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -523,7 +676,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
     };
     window.addEventListener('keydown', down);
     return () => window.removeEventListener('keydown', down);
-  }, [ui]);
+  }, [ui, storeApi]);
 
   // ------------------------------------------------------------ menus
   const openWheel = (ids: string[], x: number, y: number) => setWheel({ ids, x, y });
@@ -640,6 +793,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const selKey = selection.key;
   useEffect(() => setInspectorOpen(true), [selKey]);
+  const closeInspector = useCallback(() => setInspectorOpen(false), []);
   const nodeCount = rfNodes.length;
 
   return (
@@ -665,6 +819,23 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
             ui().setConnectingFrom(null);
             ui().setOpenCommentId(null);
           }}
+          onNodeMouseEnter={(_, node) => {
+            if (node.type === 'idea') ui().setHoverId(node.id);
+          }}
+          onNodeMouseLeave={(_, node) => {
+            // Delay so the pointer can travel onto the + buttons next to the idea.
+            if (node.type !== 'idea') return;
+            const id = node.id;
+            setTimeout(() => {
+              if (ui().hoverId === id && !document.querySelector('.sprout-toolbar:hover')) ui().setHoverId(null);
+            }, 150);
+          }}
+          onPaneMouseMove={(e) => {
+            pointer.current = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+          }}
+          onPaneMouseLeave={() => {
+            pointer.current = null;
+          }}
           onDoubleClick={(e) => {
             if (!canEdit || !(e.target as HTMLElement).classList.contains('react-flow__pane')) return;
             const at = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -689,7 +860,11 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
           }}
           onlyRenderVisibleElements
           deleteKeyCode={null}
-          selectionKeyCode="Shift"
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
+          panOnDrag={[1]}
+          panActivationKeyCode="Space"
+          selectionKeyCode={null}
           multiSelectionKeyCode={multiSelectKeys}
           zoomOnDoubleClick={false}
           nodesConnectable={false}
@@ -702,7 +877,11 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
           proOptions={{ hideAttribution: true }}
         >
           <DotGrid />
+          <SproutToolbar selectedId={selectedNodeIds.length === 1 ? selectedNodeIds[0] : null} />
         </ReactFlow>
+        <Guides />
+
+        <ZoomControls onFit={fit} />
 
         {nodeCount >= 50 && (
           <div className="minimap-wrap">
@@ -729,7 +908,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
             </button>
           )}
           {canComment && (
-            <button className="dock-btn" title="Comment on the selected idea" onClick={() => startComment(selectedNodeIds[0] ?? null)}>
+            <button className="dock-btn" title="Comment on the selected idea" onClick={commentOnSelection}>
               {Icon.comment}
               <span>Comment</span>
             </button>
@@ -740,10 +919,6 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
               <span>Tidy</span>
             </button>
           )}
-          <button className="dock-btn" title="Fit to screen" onClick={fit}>
-            {Icon.fit}
-            <span>Fit</span>
-          </button>
         </div>
 
         <HintLine canEdit={canEdit} canComment={canComment} />
@@ -751,7 +926,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
         {canEdit && inspectorOpen && hasSelection && (
           <InspectorGate>
             <Suspense fallback={null}>
-              <Inspector graph={graph} nodeIds={selectedNodeIds} edgeIds={selectedEdgeIds} commit={commit} onClose={() => setInspectorOpen(false)} />
+              <Inspector graph={graph} nodeIds={selectedNodeIds} edgeIds={selectedEdgeIds} commit={commit} onClose={closeInspector} />
             </Suspense>
           </InspectorGate>
         )}

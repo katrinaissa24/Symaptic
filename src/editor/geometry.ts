@@ -14,20 +14,18 @@ export interface Pt {
 export const center = (b: Box): Pt => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
 
 /** Where a branch leaves the parent and enters the child. Mind maps read sideways, so prefer left/right. */
-export function branchAnchors(s: Box, t: Box, tShape: Shape, sShape?: Shape) {
+export function branchAnchors(s: Box, t: Box) {
   const sc = center(s);
   const tc = center(t);
   const dx = tc.x - sc.x;
   const dy = tc.y - sc.y;
   const horizontal = Math.abs(dx) > Math.abs(dy) * 0.45 || Math.abs(dx) > s.w / 2 + t.w / 2;
-  const underline = tShape === 'underline' || tShape === 'text';
-  const fromLine = sShape === 'underline';
   if (horizontal) {
     const right = dx >= 0;
     return {
       horizontal,
-      a: { x: right ? s.x + s.w : s.x, y: fromLine ? s.y + s.h : sc.y },
-      b: { x: right ? t.x : t.x + t.w, y: underline ? t.y + t.h : tc.y },
+      a: { x: right ? s.x + s.w : s.x, y: sc.y },
+      b: { x: right ? t.x : t.x + t.w, y: tc.y },
     };
   }
   const down = dy >= 0;
@@ -159,14 +157,17 @@ export const SHAPE_PATHS: Partial<Record<Shape, string>> = {
 };
 
 export const SHAPE_LABELS: Record<Shape, string> = {
-  pill: 'Pill',
   rounded: 'Rounded',
   rect: 'Square',
+  pill: 'Pill',
   ellipse: 'Ellipse',
   circle: 'Circle',
   diamond: 'Diamond',
   hexagon: 'Hexagon',
   cloud: 'Cloud',
-  underline: 'Branch line',
-  text: 'Plain text',
+  text: 'Text only',
+  underline: 'Rounded', // legacy; drawn as rounded
 };
+
+/** Shapes offered in the UI (legacy `underline` is not). */
+export const SHAPE_OPTIONS: Shape[] = ['rounded', 'rect', 'pill', 'ellipse', 'circle', 'diamond', 'hexagon', 'cloud', 'text'];

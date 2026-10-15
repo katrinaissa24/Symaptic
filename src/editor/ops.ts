@@ -2,6 +2,7 @@ import type { AppUser, Graph, MapComment, MapEdge, MapNode } from '../lib/types'
 import { nextBranchColor } from '../lib/palette';
 import { uid } from '../lib/store';
 import type { Box, Pt } from './geometry';
+import { defaults } from './compat';
 
 export type SizeOf = (id: string) => { w: number; h: number };
 export type Dir = 'right' | 'left' | 'down' | 'up';
@@ -57,25 +58,26 @@ export function growDir(g: Graph, id: string): Dir {
 }
 
 function childStyle(g: Graph, parent: MapNode): Omit<MapNode, 'id' | 'x' | 'y' | 'text'> {
+  const d = defaults(g);
   if (parent.root || !parentOf(g, parent.id)) {
     const used = childrenOf(g, parent.id).map((c) => g.nodes[c].color);
     return {
-      shape: 'underline',
+      shape: d.branchShape,
       color: nextBranchColor(used),
       fill: 'soft',
-      fontSize: 16,
+      fontSize: d.branchFont,
       bold: true,
-      borderWidth: 3,
+      borderWidth: d.legacy ? 3 : 1,
       borderStyle: 'solid',
     };
   }
   return {
     shape: parent.shape,
     color: parent.color,
-    fill: parent.fill,
-    fontSize: Math.max(12, parent.fontSize - 2),
+    fill: parent.fill === 'solid' && !d.legacy ? 'soft' : parent.fill,
+    fontSize: d.legacy ? Math.max(12, parent.fontSize - 2) : d.ideaFont,
     bold: false,
-    borderWidth: Math.max(1.5, parent.borderWidth - 0.5),
+    borderWidth: d.legacy ? Math.max(1.5, parent.borderWidth - 0.5) : parent.borderWidth,
     borderStyle: parent.borderStyle,
   };
 }
@@ -86,16 +88,19 @@ function incomingWidth(g: Graph, id: string): number | null {
 }
 
 export function newEdge(g: Graph, source: string, target: string, color: string, kind: 'branch' | 'link' = 'branch'): MapEdge {
+  const d = defaults(g);
   const inW = incomingWidth(g, source);
+  const fromRoot = !parentOf(g, source);
+  const width = kind === 'link' ? d.linkWidth : d.legacy ? (inW ? Math.max(2.5, inW * 0.62) : 10) : fromRoot ? d.rootBranchWidth : d.branchWidth;
   return {
     id: uid('e_'),
     source,
     target,
     kind,
     color,
-    width: kind === 'link' ? 2 : inW ? Math.max(2.5, inW * 0.62) : 10,
+    width,
     style: kind === 'link' ? 'dashed' : 'solid',
-    curve: kind === 'link' ? 'bezier' : 'organic',
+    curve: kind === 'link' ? 'bezier' : d.curve,
     arrow: kind === 'link',
   };
 }
@@ -111,7 +116,7 @@ export function addChild(
   const id = uid('n_');
   const dir = opts.dir ?? growDir(g, parentId);
   const pb = box(g, parentId, size);
-  const est = { w: 110, h: style.shape === 'underline' ? 30 : 40 };
+  const est = { w: 110, h: 34 };
   let pos: Pt;
   if (opts.at) {
     pos = { x: opts.at.x - est.w / 2, y: opts.at.y - est.h / 2 };
@@ -152,18 +157,19 @@ export function addSibling(g: Graph, id: string, size: SizeOf): { graph: Graph; 
 }
 
 export function addFreeNode(g: Graph, at: Pt, color: string): { graph: Graph; id: string } {
+  const d = defaults(g);
   const id = uid('n_');
   const node: MapNode = {
     id,
     x: Math.round(at.x - 60),
-    y: Math.round(at.y - 20),
+    y: Math.round(at.y - 17),
     text: 'New idea',
-    shape: 'pill',
+    shape: d.legacy ? 'pill' : 'rounded',
     color,
     fill: 'soft',
-    fontSize: 16,
+    fontSize: d.freeFont,
     bold: false,
-    borderWidth: 2,
+    borderWidth: d.border,
     borderStyle: 'solid',
   };
   return { id, graph: { ...g, nodes: { ...g.nodes, [id]: node } } };
@@ -326,4 +332,91 @@ export function moveItems(g: Graph, pos: Map<string, Pt>): Graph {
     }
   }
   return nodes === g.nodes && comments === g.comments ? g : { ...g, nodes, comments };
+}
+
+/** Copy of the selected ideas (and the edges between them) with fresh ids, shifted by `offset`. */
+export function cloneItems(g: Graph, ids: string[], offset: Pt): { graph: Graph; ids: string[] } {
+  const map = new Map<string, string>();
+  const nodes = { ...g.nodes };
+  for (const id of ids) {
+    const n = g.nodes[id];
+    if (!n) continue;
+    const nid = uid('n_');
+    map.set(id, nid);
+    nodes[nid] = { ...n, id: nid, x: Math.round(n.x + offset.x), y: Math.round(n.y + offset.y), root: false };
+  }
+  const edges = { ...g.edges };
+  for (const e of Object.values(g.edges)) {
+    const s = map.get(e.source);
+    const t = map.get(e.target);
+    if (s && t) {
+      const ne = { ...e, id: uid('e_'), source: s, target: t };
+      edges[ne.id] = ne;
+    }
+  }
+  return { graph: { ...g, nodes, edges }, ids: [...map.values()] };
+}
+
+/** Serializable clipboard payload for the selected ideas. */
+export function clipboardFor(g: Graph, ids: string[]): { nodes: MapNode[]; edges: MapEdge[] } {
+  const set = new Set(ids);
+  return {
+    nodes: ids.map((id) => g.nodes[id]).filter(Boolean),
+    edges: Object.values(g.edges).filter((e) => set.has(e.source) && set.has(e.target)),
+  };
+}
+
+/** Paste a clipboard payload at `at` (its top-left corner), returning the new ids. */
+export function pasteItems(g: Graph, clip: { nodes: MapNode[]; edges: MapEdge[] }, at: Pt): { graph: Graph; ids: string[] } {
+  if (!clip.nodes.length) return { graph: g, ids: [] };
+  const minX = Math.min(...clip.nodes.map((n) => n.x));
+  const minY = Math.min(...clip.nodes.map((n) => n.y));
+  const map = new Map<string, string>();
+  const nodes = { ...g.nodes };
+  for (const n of clip.nodes) {
+    const nid = uid('n_');
+    map.set(n.id, nid);
+    nodes[nid] = { ...n, id: nid, x: Math.round(n.x - minX + at.x), y: Math.round(n.y - minY + at.y), root: false };
+  }
+  const edges = { ...g.edges };
+  for (const e of clip.edges) {
+    const s = map.get(e.source);
+    const t = map.get(e.target);
+    if (s && t) {
+      const ne = { ...e, id: uid('e_'), source: s, target: t };
+      edges[ne.id] = ne;
+    }
+  }
+  return { graph: { ...g, nodes, edges }, ids: [...map.values()] };
+}
+
+/** Arrow-key navigation between ideas: parent/child along the branch axis, siblings up and down. */
+export function navigate(g: Graph, id: string, key: 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'): string | null {
+  const n = g.nodes[id];
+  if (!n) return null;
+  const p = parentOf(g, id);
+  const kids = childrenOf(g, id);
+  const nearest = (cands: string[], pick: (c: MapNode) => number) => {
+    let best: string | null = null;
+    let bd = Infinity;
+    for (const c of cands) {
+      const d = pick(g.nodes[c]);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    return best;
+  };
+  if (key === 'ArrowUp' || key === 'ArrowDown') {
+    const sibs = (p ? childrenOf(g, p) : Object.values(g.nodes).filter((x) => !parentOf(g, x.id)).map((x) => x.id)).filter((s) => s !== id);
+    const dir = key === 'ArrowUp' ? -1 : 1;
+    const cands = sibs.filter((s) => Math.sign(g.nodes[s].y - n.y) === dir);
+    return nearest(cands, (c) => Math.abs(c.y - n.y) + Math.abs(c.x - n.x) * 0.2);
+  }
+  const dir = key === 'ArrowRight' ? 1 : -1;
+  const onSide = kids.filter((k) => Math.sign(g.nodes[k].x - n.x) === dir);
+  if (onSide.length) return nearest(onSide, (c) => Math.abs(c.y - n.y));
+  if (p && Math.sign(g.nodes[p].x - n.x) === dir) return p;
+  return null;
 }

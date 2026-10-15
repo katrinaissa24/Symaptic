@@ -1,33 +1,16 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { Check, MessageSquare, RotateCcw, Trash2, X } from 'lucide-react';
 import type { MapComment } from '../lib/types';
-import { cloudPath } from './geometry';
 import { useEditor } from './EditorContext';
 import { useUIStore } from './uiStore';
-import { perfCount } from '../lib/perf';
 import { uid } from '../lib/store';
 import { isMine } from './ops';
+import { Avatar } from '../components/ui/Avatar';
+import { relativeTime } from '../lib/time';
+import { perfCount } from '../lib/perf';
 
 export type CommentRFNode = Node<{ comment: MapComment }, 'comment'>;
-
-const CLOUD = cloudPath(11);
-
-function initials(name: string) {
-  return name
-    .split(/[\s._@-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]!.toUpperCase())
-    .join('');
-}
-
-function ago(ts: number) {
-  const s = Math.round((Date.now() - ts) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return new Date(ts).toLocaleDateString();
-}
 
 function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
   perfCount('CommentNode');
@@ -41,8 +24,7 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (!editing) return;
-    // Like new ideas, a new bubble is hidden until measured and can't take focus yet.
+    if (!editing || !open) return;
     let tries = 0;
     let timer = 0;
     const tryFocus = () => {
@@ -51,7 +33,7 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
     };
     tryFocus();
     return () => clearTimeout(timer);
-  }, [editing]);
+  }, [editing, open]);
 
   const saveText = () => {
     setEditing(false);
@@ -64,124 +46,116 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
     const t = reply.trim();
     if (!t || !ed.user) return;
     ed.updateComment(id, {
-      replies: [
-        ...c.replies,
-        { id: uid('r_'), text: t, authorName: ed.user.name, authorEmail: ed.user.email, authorId: ed.user.uid, createdAt: Date.now() },
-      ],
+      replies: [...c.replies, { id: uid('r_'), text: t, authorName: ed.user.name, authorEmail: ed.user.email, authorId: ed.user.uid, createdAt: Date.now() }],
     });
     setReply('');
   };
 
-  if (c.resolved && !open) {
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
+  if (!open) {
     return (
-      <div className="thought resolved" title="Resolved comment – click to reopen" onClick={() => ed.setOpenCommentId(id)}>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="thought-cloud" aria-hidden>
-          <path d={CLOUD} vectorEffect="non-scaling-stroke" />
-        </svg>
-        <span className="thought-check">✓</span>
+      <button
+        type="button"
+        className={`comment-chip${c.resolved ? ' is-resolved' : ''}${selected ? ' is-selected' : ''}`}
+        aria-label={`${c.resolved ? 'Resolved comment' : 'Comment'} by ${c.authorName}: ${c.text}`}
+        title={c.text}
+        onClick={(e) => {
+          stop(e);
+          ed.setOpenCommentId(id);
+        }}
+      >
+        {c.resolved ? <Check /> : <Avatar name={c.authorName} size="sm" />}
+        {!c.resolved && c.replies.length > 0 && <span className="comment-chip-count">{c.replies.length + 1}</span>}
         <Handle type="target" position={Position.Left} className="ghost-handle" isConnectable={false} />
-      </div>
+      </button>
     );
   }
 
   return (
-    <div className={`thought-wrap ${open ? 'open' : ''} ${selected ? 'is-selected' : ''}`}>
-      <div
-        className="thought"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!open) ed.setOpenCommentId(id);
-        }}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          if (mine) {
-            ed.setOpenCommentId(id);
-            setEditing(true);
-          }
-        }}
-      >
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="thought-cloud" aria-hidden>
-          <path d={CLOUD} vectorEffect="non-scaling-stroke" />
-        </svg>
-        <div className="thought-body">
-          <div className="thought-head">
-            <span className="avatar" title={c.authorEmail || 'Guest'}>
-              {initials(c.authorName)}
-            </span>
-            <span className="thought-author">{c.authorName}</span>
-            {c.replies.length > 0 && !open && <span className="thought-count">{c.replies.length}↩</span>}
-          </div>
-          {editing ? (
-            <textarea
-              ref={taRef}
-              className="thought-input nodrag nopan nowheel"
-              placeholder="What are you thinking?"
-              value={draft}
-              rows={2}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={saveText}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  saveText();
-                }
-                if (e.key === 'Escape') saveText();
-              }}
-            />
-          ) : (
-            <div className={`thought-text ${open ? '' : 'clamp'}`}>{c.text}</div>
+    <div className={`comment-card nowheel${selected ? ' is-selected' : ''}${c.resolved ? ' is-resolved' : ''}`} role="dialog" aria-label={`Comment by ${c.authorName}`} onClick={stop}>
+      <div className="comment-head">
+        <Avatar name={c.authorName} size="sm" />
+        <span className="comment-author truncate">{c.authorName}</span>
+        <time className="comment-time" dateTime={new Date(c.createdAt).toISOString()} title={new Date(c.createdAt).toLocaleString()}>
+          {relativeTime(c.createdAt)}
+        </time>
+        <span className="comment-actions nodrag">
+          {ed.canComment && (
+            <button type="button" className="comment-icon-btn" aria-label={c.resolved ? 'Reopen' : 'Resolve'} title={c.resolved ? 'Reopen' : 'Resolve'} onClick={() => ed.updateComment(id, { resolved: !c.resolved })}>
+              {c.resolved ? <RotateCcw /> : <Check />}
+            </button>
           )}
-        </div>
+          {(mine || ed.canEdit) && (
+            <button type="button" className="comment-icon-btn" aria-label="Delete comment" title="Delete" onClick={() => ed.deleteComment(id)}>
+              <Trash2 />
+            </button>
+          )}
+          <button type="button" className="comment-icon-btn" aria-label="Close" title="Close" onClick={() => ed.setOpenCommentId(null)}>
+            <X />
+          </button>
+        </span>
       </div>
-
-      {open && !editing && (
-        <div className="thread nodrag nopan nowheel" onClick={(e) => e.stopPropagation()}>
-          <div className="thread-meta">
-            {ago(c.createdAt)}
-            <span className="thread-actions">
-              {ed.canComment && (
-                <button onClick={() => ed.updateComment(id, { resolved: !c.resolved })}>
-                  {c.resolved ? 'Reopen' : 'Resolve'}
-                </button>
-              )}
-              {(mine || ed.canEdit) && <button onClick={() => ed.deleteComment(id)}>Delete</button>}
-              <button aria-label="Close" onClick={() => ed.setOpenCommentId(null)}>
-                ✕
-              </button>
-            </span>
-          </div>
+      {editing ? (
+        <textarea
+          ref={taRef}
+          className="comment-input nodrag nopan"
+          placeholder="Write a comment…"
+          aria-label="Comment text"
+          value={draft}
+          rows={2}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={saveText}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              saveText();
+            }
+            if (e.key === 'Escape') saveText();
+          }}
+        />
+      ) : (
+        <div
+          className="comment-text"
+          onDoubleClick={() => {
+            if (mine) setEditing(true);
+          }}
+        >
+          {c.text}
+        </div>
+      )}
+      {c.replies.length > 0 && (
+        <div className="comment-replies">
           {c.replies.map((r) => (
-            <div className="reply" key={r.id}>
-              <span className="avatar small">{initials(r.authorName)}</span>
-              <div>
-                <div className="reply-head">
-                  <b>{r.authorName}</b> <span>{ago(r.createdAt)}</span>
+            <div className="comment-reply" key={r.id}>
+              <Avatar name={r.authorName} size="sm" />
+              <div className="comment-reply-body">
+                <div className="comment-reply-head">
+                  <span className="comment-author truncate">{r.authorName}</span>
+                  <time className="comment-time" dateTime={new Date(r.createdAt).toISOString()} title={new Date(r.createdAt).toLocaleString()}>
+                    {relativeTime(r.createdAt)}
+                  </time>
                 </div>
-                <div className="reply-text">{r.text}</div>
+                <div className="comment-text">{r.text}</div>
               </div>
             </div>
           ))}
-          {ed.canComment && (
-            <form
-              className="reply-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                sendReply();
-              }}
-            >
-              <input
-                value={reply}
-                placeholder="Reply…"
-                onChange={(e) => setReply(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-              />
-              <button type="submit" disabled={!reply.trim()}>
-                Send
-              </button>
-            </form>
-          )}
         </div>
+      )}
+      {ed.canComment && !editing && (
+        <form
+          className="comment-reply-form nodrag nopan"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendReply();
+          }}
+        >
+          <input className="input input-sm" value={reply} placeholder="Reply…" aria-label="Reply" onChange={(e) => setReply(e.target.value)} onKeyDown={stop} />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!reply.trim()} aria-label="Send reply">
+            <MessageSquare />
+          </button>
+        </form>
       )}
       <Handle type="target" position={Position.Left} className="ghost-handle" isConnectable={false} />
     </div>

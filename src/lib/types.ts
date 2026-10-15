@@ -74,6 +74,8 @@ export interface Graph {
   nodes: Record<string, MapNode>;
   edges: Record<string, MapEdge>;
   comments: Record<string, MapComment>;
+  /** Schema version. Absent on maps made before the redesign (see editor/compat.ts). */
+  v?: number;
 }
 
 export interface MapDoc extends Graph {
@@ -87,6 +89,7 @@ export interface MapDoc extends Graph {
   linkRole: LinkRole;
   createdAt: number;
   updatedAt: number;
+  v?: number;
 }
 
 export interface AppUser {

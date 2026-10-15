@@ -1,0 +1,142 @@
+/* Map editor: canvas, ideas, branches, comments, guides, zoom. Tokens only. */
+
+/* ---------------------------------------------------------------- canvas */
+.canvas { flex: 1; position: relative; min-height: 0; background: var(--color-canvas); }
+.canvas.connecting .react-flow__pane { cursor: crosshair; }
+.react-flow { background: var(--color-canvas); }
+.react-flow__node { font-family: var(--font-sans); }
+.react-flow__node.dragging { will-change: transform; }
+.react-flow__node.dragging .idea-box { transition: none; }
+.react-flow__pane { cursor: default; }
+.react-flow__pane.dragging { cursor: grabbing; }
+.react-flow__selection { background: var(--color-accent-soft); border: 1px solid var(--color-accent); opacity: .8; }
+.react-flow__nodesselection-rect { border: 1px dashed var(--color-selection); border-radius: var(--radius-sm); background: transparent; }
+.react-flow__edge.selectable { cursor: pointer; }
+.ghost-handle { opacity: 0 !important; pointer-events: none !important; width: 1px !important; height: 1px !important; min-width: 0 !important; min-height: 0 !important; border: 0 !important; top: 50% !important; left: 50% !important; }
+.ghost-layer { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: var(--z-menu); }
+.dot-grid {
+  position: absolute; inset: -160px; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(circle, var(--color-canvas-dot) 1px, transparent 1.5px);
+  background-size: 24px 24px; will-change: transform; transition: opacity var(--dur) var(--ease-out);
+}
+.guides { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: var(--z-canvas-ui); }
+.guide { position: absolute; left: 0; top: 0; background: var(--color-danger); will-change: transform; }
+.guide-v { width: 1px; }
+.guide-h { height: 1px; }
+
+/* ---------------------------------------------------------------- ideas */
+.idea { position: relative; color: var(--color-text); text-align: center; }
+.idea-box {
+  --fill: color-mix(in srgb, var(--c) 10%, var(--color-surface));
+  --stroke: color-mix(in srgb, var(--c) 45%, var(--color-border));
+  --ink: var(--color-text);
+  position: relative; display: flex; align-items: center; justify-content: center;
+  min-width: 56px; max-width: 240px; min-height: 32px; padding: 6px 12px;
+  background: var(--fill); color: var(--ink); border: var(--bw) var(--bs) var(--stroke); border-radius: var(--radius-lg);
+  contain: layout paint;
+  transition: border-color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+:root[data-theme='dark'] .idea-box { --fill: color-mix(in srgb, var(--c) 18%, var(--color-surface)); --stroke: color-mix(in srgb, var(--c) 50%, var(--color-border)); }
+.idea-text { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 1ch; }
+.fill-solid .idea-box { --fill: var(--c); --stroke: color-mix(in srgb, var(--c) 80%, var(--color-text)); --ink: var(--ink-solid); }
+.fill-outline .idea-box { --fill: var(--color-surface); --stroke: color-mix(in srgb, var(--c) 80%, var(--color-border)); }
+.is-root .idea-box { min-height: 40px; padding: 8px 16px; max-width: 280px; }
+.is-root.fill-soft .idea-box { --fill: color-mix(in srgb, var(--c) 16%, var(--color-surface)); --stroke: color-mix(in srgb, var(--c) 60%, var(--color-border)); }
+/* shapes */
+.shape-rect .idea-box { border-radius: var(--radius-sm); }
+.shape-pill .idea-box { border-radius: var(--radius-full); padding-left: 14px; padding-right: 14px; }
+.shape-ellipse .idea-box { border-radius: 50%; padding: 10px 20px; }
+.shape-circle .idea-box { border-radius: 50%; aspect-ratio: 1; min-width: 56px; padding: 12px; }
+.shape-text .idea-box { --fill: transparent; --stroke: transparent; }
+.path-shape .idea-box { background: transparent; border-color: transparent; contain: layout; }
+.shape-diamond .idea-box { padding: 18px 32px; }
+.shape-hexagon .idea-box { padding: 8px 24px; }
+.shape-cloud .idea-box { padding: 16px 24px; }
+.shape-bg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: -1; }
+.shape-bg path { fill: var(--fill); stroke: var(--stroke); stroke-width: var(--bw); }
+/* states */
+.react-flow__node:hover .idea-box, .idea:hover .idea-box { --stroke: color-mix(in srgb, var(--c) 75%, var(--color-border)); }
+.react-flow__node:hover .shape-text .idea-box { --stroke: var(--color-border-strong); }
+.react-flow__node.selected .idea-box, .is-selected .idea-box { outline: 2px solid var(--color-selection); outline-offset: 2px; }
+.react-flow__node.selected .path-shape .idea-box, .is-selected.path-shape .idea-box { outline: none; }
+.react-flow__node.selected .path-shape .shape-bg path, .is-selected.path-shape .shape-bg path { stroke: var(--color-selection); stroke-width: 2px; }
+.connect-target:hover .idea-box { outline: 2px solid var(--color-selection); outline-offset: 2px; cursor: crosshair; }
+.is-editing .idea-box { outline: 2px solid var(--color-selection); outline-offset: 2px; cursor: text; }
+/* in-place editor: identical metrics to the text, so nothing jumps */
+.grow-wrap { display: inline-grid; max-width: 216px; vertical-align: top; }
+.grow-wrap::after { content: attr(data-value) ' '; white-space: pre-wrap; visibility: hidden; overflow-wrap: anywhere; }
+.grow-wrap::after, .idea-input { grid-area: 1 / 1 / 2 / 2; font: inherit; line-height: inherit; padding: 0; min-width: 3ch; }
+.idea-input {
+  border: none; outline: none; background: transparent; resize: none; margin: 0; width: 100%;
+  text-align: center; color: inherit; overflow: hidden; overflow-wrap: anywhere; caret-color: var(--color-accent);
+}
+.idea-input:focus-visible { box-shadow: none; }
+/* + buttons: one shared set (SproutToolbar), 20px, next to the hovered or selected idea */
+.sprout-toolbar { animation: sprout-in var(--dur) var(--ease-out); }
+@keyframes sprout-in { from { opacity: 0; transform: scale(.85); } }
+.sprout {
+  width: 20px; height: 20px; border-radius: var(--radius-full); border: 1px solid var(--color-border-strong);
+  background: var(--color-surface); color: var(--color-text-2); box-shadow: var(--shadow-1);
+  display: grid; place-items: center; cursor: pointer; padding: 0; touch-action: none;
+  transition: transform var(--dur) var(--ease-out), color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+.sprout .lucide { width: 12px; height: 12px; stroke-width: 2px; }
+.sprout:hover { color: var(--color-accent); border-color: var(--color-accent); transform: scale(1.1); }
+@media (pointer: coarse) { .sprout { width: 28px; height: 28px; } }
+
+/* ---------------------------------------------------------------- branches */
+.branch-line { fill: none; stroke: color-mix(in srgb, var(--c) 70%, var(--color-canvas)); stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--dur) var(--ease-out); }
+.branch-arrow { fill: color-mix(in srgb, var(--c) 70%, var(--color-canvas)); }
+.branch-hit { fill: none; stroke: transparent; stroke-width: 14px; pointer-events: stroke; }
+.react-flow__edge:hover .branch-line, .react-flow__edge:hover .branch-arrow { stroke: var(--c); }
+.react-flow__edge:hover .branch-arrow { fill: var(--c); }
+.branch.is-selected .branch-line { stroke: var(--color-selection); }
+.branch.is-selected .branch-arrow { fill: var(--color-selection); }
+.thought-line { fill: none; stroke: var(--color-border-strong); stroke-width: 1px; stroke-dasharray: 2 4; stroke-linecap: round; }
+
+/* ---------------------------------------------------------------- comments */
+.comment-chip {
+  position: relative; display: inline-flex; align-items: center; gap: var(--space-1); height: 28px; padding: 3px; border-radius: var(--radius-full);
+  background: var(--color-surface); border: 1px solid var(--color-border); box-shadow: var(--shadow-1); color: var(--color-text-2); cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.comment-chip:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-2); }
+.comment-chip.is-selected { outline: 2px solid var(--color-selection); outline-offset: 2px; }
+.comment-chip-count { padding: 0 6px 0 2px; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--color-text-2); }
+.comment-chip.is-resolved { opacity: .7; color: var(--color-success-text); width: 28px; justify-content: center; }
+.comment-chip .lucide { width: 14px; height: 14px; }
+.comment-card {
+  width: 264px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-2);
+  padding: var(--space-3); display: grid; gap: var(--space-2); cursor: default; text-align: left; font-size: var(--text-sm); line-height: var(--leading-sm);
+}
+.comment-card.is-selected { outline: 2px solid var(--color-selection); outline-offset: 2px; }
+.comment-card.is-resolved { opacity: .85; }
+.comment-head { display: flex; align-items: center; gap: var(--space-2); cursor: grab; }
+.comment-author { font-weight: var(--weight-medium); color: var(--color-text); min-width: 0; }
+.comment-time { color: var(--color-text-3); font-size: var(--text-xs); white-space: nowrap; }
+.comment-actions { margin-left: auto; display: inline-flex; gap: 2px; }
+.comment-icon-btn { width: 24px; height: 24px; border: none; background: transparent; border-radius: var(--radius-sm); color: var(--color-text-3); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.comment-icon-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+.comment-icon-btn .lucide { width: 14px; height: 14px; }
+.comment-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-text); font-size: var(--text-sm); }
+.comment-input { width: 100%; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface); resize: none; padding: var(--space-2); font-size: var(--text-sm); line-height: var(--leading-sm); color: var(--color-text); outline: none; }
+.comment-input:focus { border-color: var(--color-focus); box-shadow: 0 0 0 3px var(--color-accent-soft-2); }
+.comment-replies { display: grid; gap: var(--space-2); border-top: 1px solid var(--color-border); padding-top: var(--space-2); }
+.comment-reply { display: flex; gap: var(--space-2); }
+.comment-reply-body { min-width: 0; flex: 1; }
+.comment-reply-head { display: flex; align-items: baseline; gap: var(--space-2); }
+.comment-reply-form { display: flex; gap: var(--space-1); }
+.comment-reply-form .input { flex: 1; min-width: 0; }
+.comment-reply-form .btn { width: var(--control-sm); padding: 0; }
+
+/* ---------------------------------------------------------------- zoom + minimap */
+.zoom-controls {
+  position: absolute; right: var(--space-3); bottom: var(--space-3); z-index: var(--z-canvas-ui); display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+}
+.zoom-value { height: var(--control-sm); min-width: 48px; padding: 0 var(--space-1); border: none; background: transparent; border-radius: var(--radius-sm); font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-text-2); cursor: pointer; }
+.zoom-value:hover { background: var(--color-surface-2); color: var(--color-text); }
+.zoom-divider { width: 1px; height: 16px; background: var(--color-border); margin: 0 2px; }
+.minimap-wrap { position: absolute; left: var(--space-3); bottom: var(--space-3); z-index: var(--z-canvas-ui); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--color-border); background: var(--color-surface); box-shadow: var(--shadow-1); }
+.minimap { display: block; cursor: pointer; touch-action: none; }
+@media (max-width: 900px) { .minimap-wrap { display: none; } }

@@ -75,20 +75,29 @@ async function emptySpot(page) {
     return { x: cx, y: cy };
   });
 }
-async function visibleIdea(page) {
-  return page.evaluate(() => {
+// Deterministic targets: a leaf idea (no children) or the branch with the most descendants, both on screen.
+async function visibleIdea(page, kind = 'leaf') {
+  return page.evaluate((kind) => {
+    const docs = JSON.parse(localStorage.getItem('symaptic:docs') || '{}');
+    const doc = docs[location.pathname.split('/').pop()];
+    const kids = new Map();
+    for (const e of Object.values(doc?.edges ?? {})) kids.set(e.source, [...(kids.get(e.source) ?? []), e.target]);
+    const sizeOf = (id) => { let n = 0; const st = [id]; while (st.length) { const c = st.pop(); n++; for (const k of kids.get(c) ?? []) st.push(k); } return n; };
     const vw = innerWidth, vh = innerHeight;
-    const nodes = [...document.querySelectorAll('.react-flow__node-idea')];
-    for (const el of nodes.slice(1)) {
+    const nodes = [...document.querySelectorAll('.react-flow__node-idea')].slice(1);
+    const visible = nodes.filter((el) => {
       const b = el.getBoundingClientRect();
-      if (b.left > 20 && b.top > 80 && b.right < vw - 300 && b.bottom < vh - 100 && b.width > 10) {
-        const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-        if (hit && el.contains(hit)) return { x: b.left + b.width / 2, y: b.top + b.height / 2, w: b.width, h: b.height };
-      }
-    }
-    const b = nodes[0].getBoundingClientRect();
-    return { x: b.left + b.width / 2, y: b.top + b.height / 2, w: b.width, h: b.height };
-  });
+      if (!(b.left > 20 && b.top > 80 && b.right < vw - 300 && b.bottom < vh - 100 && b.width > 10)) return false;
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return hit && el.contains(hit);
+    });
+    let pick;
+    if (kind === 'leaf') pick = visible.find((el) => !kids.has(el.getAttribute('data-id')));
+    else pick = visible.map((el) => [el, sizeOf(el.getAttribute('data-id'))]).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const el = pick ?? visible[0] ?? nodes[0];
+    const b = el.getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2, w: b.width, h: b.height, subtree: sizeOf(el.getAttribute('data-id')) };
+  }, kind);
 }
 
 async function measure(page, browser, n) {
@@ -112,12 +121,17 @@ async function measure(page, browser, n) {
     for (let i = 0; i < 30; i++) { await page.mouse.wheel(0, -40); await sleep(8); }
     for (let i = 0; i < 30; i++) { await page.mouse.wheel(0, 40); await sleep(8); }
   }));
-  const idea = await visibleIdea(page);
+  const idea = await visibleIdea(page, 'leaf');
   results.push(await gesture(page, browser, 'drag', () => dragFrom(page, idea.x, idea.y, 160, 90)));
+  await page.waitForTimeout(400);
+  const branch = await visibleIdea(page, 'branch');
+  const g = await gesture(page, browser, `drag-branch`, () => dragFrom(page, branch.x, branch.y, 120, 80));
+  g.name = `drag-branch (${branch.subtree} ideas)`;
+  results.push(g);
   await page.waitForTimeout(400);
 
   // TYPING: double-click an idea, type, read Event Timing durations (input → next paint) for keydown.
-  const idea2 = await visibleIdea(page);
+  const idea2 = await visibleIdea(page, 'leaf');
   await page.evaluate(() => { window.__PERF__.events = []; });
   await page.mouse.dblclick(idea2.x, idea2.y);
   let typing;

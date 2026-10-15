@@ -6,6 +6,7 @@ import { applyTheme } from './lib/theme';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/ui.css';
+import './styles/editor.css';
 import './index.css';
 
 applyTheme();
