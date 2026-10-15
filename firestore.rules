@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// Paste this into Firebase console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    // Only trust an email once the provider has verified it (Google and magic links both do).
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function myEmail() { return request.auth.token.email.lower(); }
+
+    match /docs/{docId} {
+      function isOwner() { return signedIn() && resource.data.ownerId == request.auth.uid; }
+      function memberRole() {
+        return (verified() && myEmail() in resource.data.members) ? resource.data.members[myEmail()] : 'none';
+      }
+      function linkRole() { return resource.data.get('linkRole', 'none'); }
+      function canEdit() {
+        return isOwner() || memberRole() == 'edit' || (signedIn() && linkRole() == 'edit');
+      }
+      function canComment() {
+        return canEdit() || memberRole() == 'comment' || (signedIn() && linkRole() == 'comment');
+      }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+      // Reading one map: owner, invited people, or anyone holding the link when link sharing is on.
+      // Map ids are random, and listing is restricted below, so the id itself is the "link secret".
+      allow get: if isOwner() || memberRole() != 'none' || linkRole() != 'none';
+
+      // Listing maps: only your own, or ones shared with your email.
+      allow list: if signedIn() && (
+        resource.data.ownerId == request.auth.uid ||
+        (verified() && myEmail() in resource.data.memberEmails)
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.members.size() == 0;
+
+      allow delete: if isOwner();
+
+      allow update: if
+        // Owner can change anything except who owns it.
+        (isOwner() && request.resource.data.ownerId == resource.data.ownerId)
+        // Editors change content only (not sharing settings).
+        || (canEdit() && changed().hasOnly(['title', 'nodes', 'edges', 'comments', 'updatedAt']))
+        // Commenters only touch comments.
+        || (canComment() && changed().hasOnly(['comments', 'updatedAt']));
+    }
+  }
+}
