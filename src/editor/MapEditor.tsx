@@ -34,6 +34,7 @@ import {
   connect,
   duplicate,
   incomingEdgeIds,
+  isMine,
   recolor,
   removeItems,
   setEdgeProps,
@@ -104,7 +105,7 @@ export function MapEditor({ graph, commit, snapshot, undo, redo, canEdit, canCom
     for (const c of Object.values(graph.comments)) {
       let data = commentData.get(c);
       if (!data) commentData.set(c, (data = { comment: c }));
-      const mine = user?.email === c.authorEmail;
+      const mine = isMine(c, user);
       nodes.push({
         id: c.id,
         type: 'comment',
@@ -242,7 +243,7 @@ export function MapEditor({ graph, commit, snapshot, undo, redo, canEdit, canCom
   const deleteSelection = () => {
     const ids = canEdit
       ? [...selectedNodeIds, ...selectedEdgeIds, ...selectedCommentIds]
-      : selectedCommentIds.filter((id) => graph.comments[id]?.authorEmail === user?.email);
+      : selectedCommentIds.filter((id) => graph.comments[id] && isMine(graph.comments[id], user));
     if (ids.length) commit((g) => removeItems(g, ids));
   };
 
@@ -469,7 +470,7 @@ export function MapEditor({ graph, commit, snapshot, undo, redo, canEdit, canCom
       const c = graph.comments[m.id];
       const items: RadialItem[] = [{ key: 'open', label: 'Open thread', icon: Icon.comment, onSelect: () => setOpenCommentId(m.id) }];
       if (canComment) items.push({ key: 'resolve', label: c?.resolved ? 'Reopen' : 'Resolve', icon: Icon.check, onSelect: () => commit((g) => updateComment(g, m.id, { resolved: !c?.resolved })) });
-      if (canEdit || c?.authorEmail === user?.email) items.push({ key: 'del', label: 'Delete', icon: Icon.trash, onSelect: () => commit((g) => removeItems(g, [m.id])) });
+      if (canEdit || (c && isMine(c, user))) items.push({ key: 'del', label: 'Delete', icon: Icon.trash, onSelect: () => commit((g) => removeItems(g, [m.id])) });
       return items;
     }
     // pane

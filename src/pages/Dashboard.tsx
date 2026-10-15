@@ -5,6 +5,7 @@ import { store } from '../lib/store';
 import { isFirebaseConfigured } from '../lib/firebase';
 import type { MapDoc } from '../lib/types';
 import { Logo } from '../components/Logo';
+import { AccountMenu } from '../components/AccountMenu';
 
 function Thumb({ d }: { d: MapDoc }) {
   const nodes = Object.values(d.nodes ?? {});
@@ -39,7 +40,7 @@ function Thumb({ d }: { d: MapDoc }) {
 }
 
 export default function Dashboard() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   const nav = useNavigate();
   const [tab, setTab] = useState<'mine' | 'shared'>('mine');
   const [mine, setMine] = useState<MapDoc[] | null>(null);
@@ -76,10 +77,20 @@ export default function Dashboard() {
       <header className="dash-top">
         <Logo />
         <div className="spacer" />
-        <span className="who">{user.email}</span>
-        <button className="btn ghost" onClick={() => signOut().then(() => nav('/'))}>Sign out</button>
+        <span className="who">{user.isAnonymous ? `${user.name} · guest` : user.email}</span>
+        <AccountMenu />
       </header>
 
+      {user.isAnonymous && (
+        <div className="guest-banner">
+          <span className="guest-dot" />
+          <p>
+            You’re mapping as a guest, so your maps live in this browser. <b>Sign in</b> to keep them on any device. They come
+            with you.
+          </p>
+          <Link className="btn" to="/login?next=/app">Sign in</Link>
+        </div>
+      )}
       <main className="dash-main">
         <div className="dash-head">
           <div className="tabs">
@@ -115,7 +126,7 @@ export default function Dashboard() {
               )}
             </div>
           ))}
-          {list && !list.length && tab === 'shared' && <p className="muted">Nothing shared with you yet. Maps people share with {user.email} show up here.</p>}
+          {list && !list.length && tab === 'shared' && <p className="muted">{user.isAnonymous ? 'Sign in with your email to see maps people have shared with you.' : `Nothing shared with you yet. Maps people share with ${user.email} show up here.`}</p>}
           {!list && <div className="spinner" />}
         </div>
       </main>

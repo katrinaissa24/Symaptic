@@ -8,16 +8,27 @@ import { MapEditor } from '../editor/MapEditor';
 import { ShareDialog } from '../components/ShareDialog';
 import { Icon } from '../editor/icons';
 import { Logo } from '../components/Logo';
+import { AccountMenu } from '../components/AccountMenu';
 
 const ROLE_BADGE = { owner: 'Owner', edit: 'Editor', comment: 'Commenter', view: 'Viewer', none: '' } as const;
 
 export default function EditorPage() {
   const { id = '' } = useParams();
-  const { user, loading, getIdToken } = useAuth();
+  const { user, loading, getIdToken, ensureUser } = useAuth();
   const nav = useNavigate();
   const api = useMapDoc(id);
   const [sharing, setSharing] = useState(false);
   const [title, setTitle] = useState('');
+  const [guestError, setGuestError] = useState('');
+
+  // Visitors who open a comment/edit link get a guest identity automatically, no sign-up needed.
+  const linkRole = api.meta?.linkRole;
+  useEffect(() => {
+    if (loading || user || (linkRole !== 'comment' && linkRole !== 'edit')) return;
+    ensureUser().catch((e) => setGuestError(/operation-not-allowed|admin-restricted/.test((e as { code?: string }).code ?? '')
+      ? 'Guest access isn’t switched on yet (Firebase → Authentication → Sign-in method → Anonymous).'
+      : (e as Error).message));
+  }, [loading, user, linkRole]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (api.meta) setTitle(api.meta.title);
@@ -35,8 +46,16 @@ export default function EditorPage() {
         <div className="empty-card">
           <Logo />
           <h2>{api.status === 'missing' ? 'This map doesn’t exist' : 'You don’t have access to this map'}</h2>
-          <p>{user ? `You’re signed in as ${user.email}. Ask the owner to share it with this address.` : 'Sign in with the email it was shared with.'}</p>
-          {user ? <Link className="btn primary" to="/app">Back to my maps</Link> : <Link className="btn primary" to={`/login?next=/d/${id}`}>Sign in</Link>}
+          <p>
+            {user && !user.isAnonymous
+              ? `You’re signed in as ${user.email}. Ask the owner to share it with this address.`
+              : 'If it was shared with your email, sign in with that address.'}
+          </p>
+          {user && !user.isAnonymous ? (
+            <Link className="btn primary" to="/app">Back to my maps</Link>
+          ) : (
+            <Link className="btn primary" to={`/login?next=/d/${id}`}>Sign in</Link>
+          )}
         </div>
       </div>
     );
@@ -45,7 +64,6 @@ export default function EditorPage() {
   const access = accessFor(api.meta, user);
   const canEdit = access === 'owner' || access === 'edit';
   const canComment = canEdit || access === 'comment';
-  const linkWantsMore = !user && (api.meta.linkRole === 'edit' || api.meta.linkRole === 'comment');
 
   return (
     <div className="editor-page">
@@ -69,15 +87,14 @@ export default function EditorPage() {
           </>
         )}
         {access !== 'owner' && access !== 'none' && <span className="badge">{ROLE_BADGE[access]}</span>}
-        {linkWantsMore && (
-          <Link className="btn" to={`/login?next=/d/${id}`}>Sign in to {api.meta.linkRole}</Link>
-        )}
+        {guestError && <span className="note err slim">{guestError}</span>}
+        {!user && api.meta.linkRole === 'view' && <Link className="btn ghost" to={`/login?next=/d/${id}`}>Sign in</Link>}
         {access === 'owner' && user && (
           <button className="btn primary" onClick={() => setSharing(true)}>
             {Icon.share} Share
           </button>
         )}
-        {user && <span className="avatar me" title={user.email}>{user.name[0]?.toUpperCase()}</span>}
+        <AccountMenu />
       </header>
 
       <ReactFlowProvider>

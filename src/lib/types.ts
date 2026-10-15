@@ -51,6 +51,8 @@ export interface CommentReply {
   text: string;
   authorName: string;
   authorEmail: string;
+  /** uid of the author (works for guests, who have no email). */
+  authorId?: string;
   createdAt: number;
 }
 
@@ -62,6 +64,7 @@ export interface MapComment {
   text: string;
   authorName: string;
   authorEmail: string;
+  authorId?: string;
   createdAt: number;
   replies: CommentReply[];
   resolved: boolean;
@@ -91,6 +94,8 @@ export interface AppUser {
   email: string;
   name: string;
   photoURL?: string | null;
+  /** Guest account: no email until they sign in. */
+  isAnonymous?: boolean;
 }
 
 /** Field-level patch: keys are dotted paths like "nodes.abc"; null deletes the field. */

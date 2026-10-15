@@ -267,7 +267,13 @@ export function duplicate(g: Graph, ids: string[]): { graph: Graph; ids: string[
   return { graph: { ...g, nodes, edges }, ids: [...map.values()] };
 }
 
-export function addComment(g: Graph, nodeId: string | null, at: Pt, user: { name: string; email: string }): { graph: Graph; id: string } {
+export function isMine(c: { authorId?: string; authorEmail: string }, user: AppUser | null): boolean {
+  if (!user) return false;
+  if (c.authorId) return c.authorId === user.uid;
+  return !!user.email && c.authorEmail === user.email;
+}
+
+export function addComment(g: Graph, nodeId: string | null, at: Pt, user: AppUser): { graph: Graph; id: string } {
   const id = uid('c_');
   const c: MapComment = {
     id,
@@ -277,6 +283,7 @@ export function addComment(g: Graph, nodeId: string | null, at: Pt, user: { name
     text: '',
     authorName: user.name,
     authorEmail: user.email,
+    authorId: user.uid,
     createdAt: Date.now(),
     replies: [],
     resolved: false,
@@ -300,4 +307,3 @@ export function updateComment(g: Graph, id: string, props: Partial<MapComment>):
   return { ...g, comments: { ...g.comments, [id]: { ...c, ...props } } };
 }
 
-export const userLabel = (u: AppUser) => ({ name: u.name, email: u.email });

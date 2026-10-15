@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { Logo } from '../components/Logo';
 
-function friendly(e: unknown, method: 'google' | 'link'): string {
+function friendly(e: unknown, method: 'google' | 'link' | 'guest'): string {
   const code = (e as { code?: string }).code ?? '';
+  if (method === 'guest' && code === 'auth/admin-restricted-operation')
+    return 'Guest access isn’t switched on yet. Enable “Anonymous” in Firebase → Authentication → Sign-in method.';
   if (code === 'auth/operation-not-allowed')
-    return method === 'google'
+    return method === 'guest'
+      ? 'Guest access isn’t switched on yet. Enable “Anonymous” in Firebase → Authentication → Sign-in method.'
+      : method === 'google'
       ? 'Google sign-in isn’t switched on yet. Enable it in Firebase → Authentication → Sign-in method.'
       : 'Magic links aren’t switched on yet. In Firebase → Authentication → Sign-in method → Email/Password, enable “Email link (passwordless sign-in)”.';
   if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return '';
@@ -20,6 +24,7 @@ function friendly(e: unknown, method: 'google' | 'link'): string {
 export default function Login() {
   const auth = useAuth();
   const [params] = useSearchParams();
+  const nav = useNavigate();
   const next = params.get('next') || '/app';
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -38,7 +43,19 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (auth.user) return <Navigate to={next} replace />;
+  // Guests may come here to upgrade, so only bounce people who already have a real account.
+  if (auth.user && !auth.user.isAnonymous) return <Navigate to={next} replace />;
+  const upgrading = !!auth.user?.isAnonymous;
+
+  const guest = async () => {
+    setError('');
+    try {
+      await auth.ensureUser();
+      nav(next, { replace: true });
+    } catch (e) {
+      setError(friendly(e, 'guest'));
+    }
+  };
 
   const google = async () => {
     setError('');
@@ -90,11 +107,13 @@ export default function Login() {
           </>
         ) : (
           <>
-            <h1>{state === 'need-email' ? 'Confirm your email' : 'Welcome in'}</h1>
+            <h1>{state === 'need-email' ? 'Confirm your email' : upgrading ? 'Keep your maps' : 'Welcome in'}</h1>
             <p className="muted">
               {state === 'need-email'
                 ? 'You opened the link on a different device. Type the email you used once more.'
-                : isFirebaseConfigured
+                : upgrading
+                  ? `You’re ${auth.user!.name}, a guest. Sign in and everything you made comes with you.`
+                  : isFirebaseConfigured
                   ? 'No passwords. Sign in with Google or get a magic link.'
                   : 'Demo mode: pick any name and email to try it locally.'}
             </p>
@@ -121,6 +140,11 @@ export default function Login() {
                 {state === 'sending' ? 'Sending…' : state === 'finishing' ? 'Signing in…' : isFirebaseConfigured ? (state === 'need-email' ? 'Sign in' : 'Email me a link') : 'Enter demo'}
               </button>
             </form>
+            {!upgrading && state !== 'need-email' && (
+              <button className="guest-link" onClick={guest}>
+                or <b>jump straight in as a guest</b> →
+              </button>
+            )}
           </>
         )}
         {error && <p className="note err">{error}</p>}

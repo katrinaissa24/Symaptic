@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../lib/auth';
+import { store } from '../lib/store';
+import { LogoMark } from '../components/Logo';
 import { BRANCH_COLORS, shade } from '../lib/palette';
 import { cubicFor, cloudPath, taperedPath } from '../editor/geometry';
 import { ShapeIcon } from '../editor/icons';
@@ -138,10 +140,47 @@ function HeroMap() {
 
 const SHAPES: Shape[] = ['pill', 'cloud', 'hexagon', 'diamond', 'circle', 'underline'];
 
+const TICKER: [string, string][] = [
+  ['Right-click for the colour wheel', '#e8606e'],
+  ['Drag a + to sprout an idea', '#3cc9b0'],
+  ['Tab grows a branch', '#f2c94c'],
+  ['Thought-bubble comments', '#f29a55'],
+  ['Share with a link', '#6f96dc'],
+  ['Guests welcome', '#c58ae0'],
+  ['Ten node shapes', '#86c440'],
+  ['Tidy in one click', '#ef7fb0'],
+  ['Live collaboration', '#4fb3d9'],
+  ['Undo anything', '#9b7be6'],
+];
+
+// Tapered branches that grow down into the footer.
+const FOOT_BRANCHES: [string, string][] = [
+  [taperedPath(cubicFor({ x: 600, y: 120 }, { x: 80, y: 18 }, true), 16), '#3cc9b0'],
+  [taperedPath(cubicFor({ x: 600, y: 120 }, { x: 330, y: 50 }, true), 12), '#f2c94c'],
+  [taperedPath(cubicFor({ x: 600, y: 120 }, { x: 870, y: 40 }, true), 12), '#e8606e'],
+  [taperedPath(cubicFor({ x: 600, y: 120 }, { x: 1130, y: 12 }, true), 16), '#6f96dc'],
+  [taperedPath(cubicFor({ x: 600, y: 120 }, { x: 560, y: 70 }, false), 9), '#c58ae0'],
+];
+
 export default function Landing() {
-  const { user } = useAuth();
+  const { user, ensureUser } = useAuth();
+  const nav = useNavigate();
   const [shapeIdx, setShapeIdx] = useState(0);
-  const cta = user ? '/app' : '/login';
+  const [starting, setStarting] = useState(false);
+
+  // No sign-up wall: become a guest if needed and land straight in a fresh map.
+  const start = async () => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const u = await ensureUser();
+      nav(`/d/${await store.create(u, 'Untitled map')}`);
+    } catch {
+      nav('/login');
+    } finally {
+      setStarting(false);
+    }
+  };
 
   return (
     <div className="landing">
@@ -157,8 +196,11 @@ export default function Landing() {
         </h1>
         <p className="lede">A colourful mind map you can shape, comment on, and share with anyone in two clicks.</p>
         <div className="hero-ctas">
-          <Link className="btn primary big" to={cta}>Start mapping. It’s free</Link>
+          <button className="btn primary big" onClick={start} disabled={starting}>
+            {starting ? 'Planting your map…' : 'Start mapping. It’s free'}
+          </button>
         </div>
+        <p className="hero-note">No sign-up needed. Jump in as a guest and save your maps later.</p>
         <HeroMap />
       </section>
 
@@ -203,11 +245,70 @@ export default function Landing() {
         </article>
       </section>
 
+      <section className="ticker" aria-label="Things you can do">
+        <div className="ticker-track">
+          {[0, 1].map((k) => (
+            <div className="ticker-row" key={k} aria-hidden={k === 1}>
+              {TICKER.map(([label, c]) => (
+                <span className="ticker-chip" key={label}>
+                  <i style={{ background: c }} />
+                  {label}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="final-cta">
         <h2>Your next idea is one click away.</h2>
-        <Link className="btn primary big" to={cta}>Open a blank map</Link>
+        <button className="btn primary big" onClick={start} disabled={starting}>Open a blank map</button>
       </section>
-      <footer className="land-foot">symaptic · made for messy, wonderful thinking</footer>
+
+      <footer className="land-foot">
+        <svg className="foot-branches" viewBox="0 0 1200 120" preserveAspectRatio="none" aria-hidden>
+          {FOOT_BRANCHES.map(([d, c], i) => (
+            <path key={i} d={d} fill={c} />
+          ))}
+        </svg>
+        <div className="foot-inner">
+          <div className="foot-brand">
+            <div className="foot-word">
+              <LogoMark size={40} />
+              <span>symaptic</span>
+            </div>
+            <p>A colourful place for messy, wonderful thinking. Map it, shape it, share it.</p>
+            <button className="btn primary" onClick={start} disabled={starting}>Start a map →</button>
+          </div>
+          <nav className="foot-col">
+            <h4>Product</h4>
+            <button onClick={start}>New map</button>
+            <Link to="/app">My maps</Link>
+            <Link to="/login">Sign in</Link>
+          </nav>
+          <div className="foot-col">
+            <h4>Handy keys</h4>
+            <span><kbd>Right-click</kbd> the wheel</span>
+            <span><kbd>Tab</kbd> new branch</span>
+            <span><kbd>Enter</kbd> sibling</span>
+            <span><kbd>⌘ Z</kbd> undo</span>
+          </div>
+          <div className="foot-col">
+            <h4>Open source</h4>
+            <a href="https://github.com/katrinaissa24/Symaptic" target="_blank" rel="noreferrer">GitHub</a>
+            <span className="muted-foot">Built with React Flow &amp; Firebase</span>
+          </div>
+        </div>
+        <div className="foot-bottom">
+          <span>© {new Date().getFullYear()} Symaptic</span>
+          <span className="foot-dots">
+            {BRANCH_COLORS.slice(0, 7).map((c) => (
+              <i key={c} style={{ background: c }} />
+            ))}
+          </span>
+          <span>Made with curiosity 💭</span>
+        </div>
+      </footer>
     </div>
   );
 }

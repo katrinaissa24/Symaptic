@@ -28,6 +28,8 @@ accounts and sharing.
 3. **Build → Authentication → Get started → Sign-in method**:
    - enable **Google**
    - enable **Email/Password**, then switch on **Email link (passwordless sign-in)** inside it
+   - enable **Anonymous**. This lets people start mapping, or comment through a shared link, without signing up.
+     Guests can sign in later and keep everything they made.
 4. **Authentication → Settings → Authorized domains**: add your production domain later
    (e.g. `symaptic.vercel.app`). `localhost` is already there.
 5. **Build → Firestore Database → Create database** (production mode, any region).

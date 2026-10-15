@@ -44,8 +44,9 @@ export function ShareDialog({
       for (const e of fresh) members[e] = role;
       await setMembers(members);
       setEmails('');
+      const noEmail = `Added! They’ll see it under “Shared with me” once they sign in with ${fresh.length > 1 ? 'those emails' : 'that email'}. Invite emails aren’t set up yet, so copy the link below and send it to them.`;
       if (!isFirebaseConfigured) {
-        setNote({ kind: 'warn', text: 'Added. Demo mode: no email was sent. Connect Firebase + Resend to send real invites.' });
+        setNote({ kind: 'ok', text: noEmail });
         return;
       }
       const token = await getIdToken();
@@ -53,9 +54,11 @@ export function ShareDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ docId: doc.id, emails: fresh }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (res.ok) setNote({ kind: 'ok', text: `Invite sent to ${fresh.join(', ')} ✉️` });
+      }).catch(() => null);
+      const body = res ? await res.json().catch(() => ({})) : {};
+      if (res?.ok) setNote({ kind: 'ok', text: `Invite sent to ${fresh.join(', ')} ✉️` });
+      // No email service configured (or no /api locally): access still works, just share the link by hand.
+      else if (!res || res.status === 404 || res.status === 500 && /RESEND/.test(body.error ?? '')) setNote({ kind: 'ok', text: noEmail });
       else setNote({ kind: 'warn', text: `Access granted, but the email failed: ${body.error ?? res.statusText}` });
     } catch (e) {
       setNote({ kind: 'err', text: (e as Error).message });
@@ -133,7 +136,7 @@ export function ShareDialog({
           ))}
         </ul>
 
-        <h3>Link sharing</h3>
+        <h3>Link sharing <span className="h3-hint">easiest way to share, no accounts needed</span></h3>
         <div className="link-row">
           <div className={`link-icon ${doc.linkRole !== 'none' ? 'on' : ''}`}>🔗</div>
           <div className="link-text">

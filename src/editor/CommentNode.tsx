@@ -4,6 +4,7 @@ import type { MapComment } from '../lib/types';
 import { cloudPath } from './geometry';
 import { useEditor } from './EditorContext';
 import { uid } from '../lib/store';
+import { isMine } from './ops';
 
 export type CommentRFNode = Node<{ comment: MapComment }, 'comment'>;
 
@@ -29,7 +30,7 @@ function ago(ts: number) {
 function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
   const c = data.comment;
   const ed = useEditor();
-  const mine = !!ed.user && ed.user.email === c.authorEmail;
+  const mine = isMine(c, ed.user);
   const open = ed.openCommentId === id;
   const [editing, setEditing] = useState(mine && !c.text);
   const [draft, setDraft] = useState(c.text);
@@ -62,7 +63,7 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
     ed.updateComment(id, {
       replies: [
         ...c.replies,
-        { id: uid('r_'), text: t, authorName: ed.user.name, authorEmail: ed.user.email, createdAt: Date.now() },
+        { id: uid('r_'), text: t, authorName: ed.user.name, authorEmail: ed.user.email, authorId: ed.user.uid, createdAt: Date.now() },
       ],
     });
     setReply('');
@@ -101,7 +102,7 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
         </svg>
         <div className="thought-body">
           <div className="thought-head">
-            <span className="avatar" title={c.authorEmail}>
+            <span className="avatar" title={c.authorEmail || 'Guest'}>
               {initials(c.authorName)}
             </span>
             <span className="thought-author">{c.authorName}</span>

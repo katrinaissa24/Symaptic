@@ -94,6 +94,7 @@ const firebaseStore: Store = {
     return snap.docs.map((s) => ({ ...(s.data() as MapDoc), id: s.id }));
   },
   async listShared(user) {
+    if (!user.email) return []; // guests have no email to share with
     const snap = await getDocs(
       query(collection(db!, 'docs'), where('memberEmails', 'array-contains', user.email.toLowerCase())),
     );
@@ -153,6 +154,7 @@ const localStore: Store = {
     return Object.values(readAll()).filter((d) => d.ownerId === user.uid);
   },
   async listShared(user) {
+    if (!user.email) return [];
     return Object.values(readAll()).filter((d) => d.memberEmails.includes(user.email.toLowerCase()));
   },
   async create(user, title) {
