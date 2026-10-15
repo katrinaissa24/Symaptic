@@ -124,7 +124,7 @@ export function ShareDialog({
       </form>
       {note && <p className={`note ${note.kind}`}>{note.text}</p>}
 
-      <h4 className="share-heading">People with access</h4>
+      <h3 className="share-heading">People with access</h3>
       <ul className="people">
         <li>
           <Avatar name={doc.ownerName} user={{ name: doc.ownerName, email: doc.ownerEmail }} />
@@ -160,7 +160,7 @@ export function ShareDialog({
         ))}
       </ul>
 
-      <h4 className="share-heading">Link sharing</h4>
+      <h3 className="share-heading">Link sharing</h3>
       <div className="share-link">
         <span className={`share-link-icon${doc.linkRole !== 'none' ? ' is-on' : ''}`} aria-hidden>
           {doc.linkRole === 'none' ? <Lock /> : <Globe />}

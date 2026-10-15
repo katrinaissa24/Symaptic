@@ -4,7 +4,7 @@
 .page-top { display: flex; align-items: center; gap: var(--space-3); height: 56px; padding: 0 clamp(var(--space-4), 4vw, var(--space-10)); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
 .page-main { width: 100%; max-width: 1200px; margin: 0 auto; padding: var(--space-6) clamp(var(--space-4), 4vw, var(--space-10)) var(--space-16); }
 .banner { display: flex; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--color-warning-text); background: var(--color-warning-soft); border-bottom: 1px solid var(--color-border); text-align: center; flex-wrap: wrap; }
-.banner code { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--color-scrim); padding: 1px 5px; border-radius: var(--radius-sm); }
+.banner code { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--color-surface); color: var(--color-text); padding: 1px 5px; border-radius: var(--radius-sm); }
 .banner-accent { color: var(--color-text-2); background: var(--color-surface-2); }
 
 /* ---------------------------------------------------------------- dashboard */

@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { Logo } from '../components/Logo';
 import { Button, Field, Input } from '../components/ui';
+import { usePageTitle } from '../lib/usePageTitle';
 
 function friendly(e: unknown, method: 'google' | 'link' | 'guest'): string {
   const code = (e as { code?: string }).code ?? '';
@@ -33,6 +34,7 @@ const GoogleMark = () => (
 );
 
 export default function Login() {
+  usePageTitle('Sign in');
   const auth = useAuth();
   const [params] = useSearchParams();
   const nav = useNavigate();
@@ -102,7 +104,7 @@ export default function Login() {
   const busy = state === 'sending' || state === 'finishing';
 
   return (
-    <div className="login page-enter">
+    <main className="login page-enter">
       <div className="login-card">
         <Logo />
         {state === 'sent' ? (
@@ -161,6 +163,6 @@ export default function Login() {
           </p>
         )}
       </div>
-    </div>
+    </main>
   );
 }

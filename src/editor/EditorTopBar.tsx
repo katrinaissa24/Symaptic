@@ -13,7 +13,7 @@ export function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry():
   if (state === 'error')
     return (
       <button type="button" className="save-state is-error" onClick={onRetry} aria-live="polite">
-        <RotateCcw /> Couldn’t save · Retry
+        <RotateCcw /> <span className="save-text">Couldn’t save · Retry</span>
       </button>
     );
   return (
@@ -21,7 +21,7 @@ export function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry():
       {state === 'saved' && <Check />}
       {state === 'saving' && <span className="save-spinner" aria-hidden />}
       {state === 'offline' && <CloudOff />}
-      {state === 'saved' ? 'Saved' : state === 'saving' ? 'Saving…' : 'Offline'}
+      <span className="save-text">{state === 'saved' ? 'Saved' : state === 'saving' ? 'Saving…' : 'Offline'}</span>
     </span>
   );
 }
@@ -78,9 +78,17 @@ export function EditorTopBar({
 
   return (
     <header className="topbar">
+      <h1 className="visually-hidden">{doc.title}</h1>
       <nav className="crumbs" aria-label="Breadcrumb">
         <Tooltip content={user ? 'My maps' : 'Home'}>
-          <Link to={user ? '/app' : '/'} className="btn btn-ghost btn-sm crumb-home" aria-label={user ? 'Back to My maps' : 'Home'}>
+          <Link
+            to={user ? '/app' : '/'}
+            className="btn btn-ghost btn-sm crumb-home"
+            aria-label={user ? 'Back to My maps' : 'Home'}
+            onClick={(e) => {
+              if (save === 'error' && !confirm('Some changes could not be saved. Leave anyway?')) e.preventDefault();
+            }}
+          >
             <ArrowLeft className="crumb-back" />
             <LogoMark size={18} />
             <span className="crumb-text">My maps</span>
@@ -138,8 +146,8 @@ export function EditorTopBar({
         </Button>
       )}
       {access === 'owner' && user && (
-        <Button variant="primary" icon={<Share2 />} onClick={onShare}>
-          Share
+        <Button variant="primary" icon={<Share2 />} onClick={onShare} aria-label="Share">
+          <span className="topbar-share-text">Share</span>
         </Button>
       )}
       <AccountMenu />

@@ -16,7 +16,7 @@
   --color-border-strong: #d4d4d8; /* inputs, active borders */
   --color-text: #18181b;
   --color-text-2: #52525b;        /* secondary */
-  --color-text-3: #71717a;        /* muted, hints: 4.6:1 on canvas */
+  --color-text-3: #6b6b74;        /* muted, hints: 4.8:1 on surface-2 */
   --color-text-inverse: #fafafa;
   --color-text-on-accent: #ffffff;
 

@@ -28,10 +28,14 @@
 .topbar-group { display: inline-flex; gap: 0; }
 .topbar-people { margin: 0 var(--space-1); }
 @media (max-width: 760px) {
-  .crumb-text, .crumb-sep, .topbar-people, .topbar .tag { display: none; }
+  .crumb-text, .crumb-sep, .topbar-people, .topbar .tag, .save-text, .topbar-share-text { display: none; }
+  .save-state.is-error .save-text { display: inline; }
   .crumb-back { display: block; }
   .crumb-home .lucide + svg { display: none; }
-  .title-input { max-width: 36vw; }
+  .title-input { max-width: 40vw; }
+  .topbar .btn-primary { padding: 0; width: var(--control-md); }
+  /* While the style sheet is open on a phone, the floating toolbar and zoom control step aside. */
+  .editor-body:has(.inspector) .toolbar, .editor-body:has(.inspector) .zoom-controls, .editor-body:has(.inspector) .onboarding { display: none; }
 }
 
 /* ---------------------------------------------------------------- toolbar */

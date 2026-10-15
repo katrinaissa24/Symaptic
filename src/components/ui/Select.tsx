@@ -2,7 +2,7 @@ import { Select as RS } from 'radix-ui';
 import { Check, ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useModalLayer } from './modal';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 export interface SelectOption<T extends string> {
   value: T;
@@ -33,11 +33,17 @@ export function Select<T extends string>({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const id = useId();
   useModalLayer(open);
   return (
     <RS.Root value={value} onValueChange={(v) => onValueChange(v as T)} open={open} onOpenChange={setOpen} disabled={disabled}>
-      <RS.Trigger className={`select-trigger${variant === 'ghost' ? ' select-ghost' : ''}${size === 'sm' ? ' select-sm' : ''} ${className}`.trim()} aria-label={ariaLabel}>
-        <RS.Value placeholder={placeholder} />
+      <RS.Trigger className={`select-trigger${variant === 'ghost' ? ' select-ghost' : ''}${size === 'sm' ? ' select-sm' : ''} ${className}`.trim()} aria-labelledby={`${id}-label ${id}-value`}>
+        <span id={`${id}-label`} className="visually-hidden">
+          {ariaLabel}
+        </span>
+        <span id={`${id}-value`} className="select-value">
+          <RS.Value placeholder={placeholder} />
+        </span>
         <RS.Icon className="select-chevron">
           <ChevronDown />
         </RS.Icon>

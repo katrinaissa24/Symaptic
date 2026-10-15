@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { store } from '../lib/store';
 import type { Graph, MapDoc, Patch } from '../lib/types';
+import { toast } from '../components/Toast';
 
 const COLS = ['nodes', 'edges', 'comments'] as const;
 type Col = (typeof COLS)[number];
@@ -100,10 +101,16 @@ export function useMapDoc(id: string) {
         // Put the failed keys back so a retry (or the next edit) sends them again.
         for (const k of keys) dirty.current.add(k);
         if (!firstDirtyAt.current) firstDirtyAt.current = Date.now();
-        setSave('error');
+        setSave((prev) => {
+          if (prev !== 'error') toast.error('Couldn’t save your changes', { description: (e as Error).message, action: { label: 'Retry', onClick: () => flushRef.current() } });
+          return 'error';
+        });
       },
     );
   }, [id]);
+
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
 
   const schedule = useCallback(() => {
     const now = Date.now();

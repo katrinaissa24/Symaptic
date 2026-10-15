@@ -19,17 +19,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { variant = 'secondary', size = 'md', asChild, active, block, icon, className = '', children, type, ...rest },
   ref,
 ) {
-  const Comp = asChild ? Slot.Root : 'button';
+  const cls = `btn btn-${variant} btn-${size}${active ? ' is-active' : ''}${block ? ' btn-block' : ''} ${className}`.trim();
+  // With asChild the single child element becomes the button; put any icon inside that child.
+  if (asChild)
+    return (
+      <Slot.Root ref={ref} className={cls} {...rest}>
+        {children}
+      </Slot.Root>
+    );
   return (
-    <Comp
-      ref={ref}
-      type={asChild ? undefined : (type ?? 'button')}
-      className={`btn btn-${variant} btn-${size}${active ? ' is-active' : ''}${block ? ' btn-block' : ''} ${className}`.trim()}
-      {...rest}
-    >
+    <button ref={ref} type={type ?? 'button'} className={cls} {...rest}>
       {icon}
       {children}
-    </Comp>
+    </button>
   );
 });
 

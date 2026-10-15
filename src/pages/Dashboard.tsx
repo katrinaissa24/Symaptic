@@ -13,6 +13,7 @@ import { CardSkeleton } from '../components/Skeleton';
 import { MapThumb } from '../components/MapThumb';
 import { toast } from '../components/Toast';
 import { Button, Dialog, IconButton, Input, Menu, Segmented, Select, type MenuItem } from '../components/ui';
+import { usePageTitle } from '../lib/usePageTitle';
 
 const ShareDialog = lazy(() => import('../components/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
@@ -31,6 +32,7 @@ function readPref<T extends string>(key: string, fallback: T, allowed: T[]): T {
 }
 
 export default function Dashboard() {
+  usePageTitle('My maps');
   const { user, loading, getIdToken } = useAuth();
   const nav = useNavigate();
   const [tab, setTab] = useState<Tab>('mine');
@@ -175,13 +177,16 @@ export default function Dashboard() {
           <span>
             You’re mapping as a guest, so your maps live in this browser. Sign in to keep them on any device.
           </span>
-          <Button size="sm" asChild icon={<LogIn />}>
-            <Link to="/login?next=/app">Sign in</Link>
+          <Button size="sm" asChild>
+            <Link to="/login?next=/app">
+              <LogIn /> Sign in
+            </Link>
           </Button>
         </div>
       )}
 
       <main className="page-main">
+        <h1 className="visually-hidden">My maps</h1>
         <div className="dash-head">
           <div className="dash-tabs" role="tablist" aria-label="Maps">
             <button role="tab" aria-selected={tab === 'mine'} className={`dash-tab${tab === 'mine' ? ' is-on' : ''}`} onClick={() => setTab('mine')}>
@@ -246,7 +251,7 @@ export default function Dashboard() {
             )}
             {list.map((d) => (
               <article key={d.id} className="map-card">
-                <Link to={`/d/${d.id}`} className="map-card-link" aria-label={`Open ${d.title}`}>
+                <Link to={`/d/${d.id}`} className="map-card-link" tabIndex={-1} aria-hidden>
                   <MapThumb doc={d} className="map-card-thumb" />
                 </Link>
                 <div className="map-card-meta">
@@ -282,11 +287,9 @@ export default function Dashboard() {
                       align="end"
                       items={menuFor(d)}
                       trigger={
-                        <span>
-                          <IconButton label={`More actions for ${d.title}`} size="sm" tooltip={false}>
-                            <MoreHorizontal />
-                          </IconButton>
-                        </span>
+                        <IconButton label={`More actions for ${d.title}`} size="sm" tooltip={false}>
+                          <MoreHorizontal />
+                        </IconButton>
                       }
                     />
                   </div>

@@ -16,9 +16,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   const id = useId();
   return (
     <section className="inspector-section" aria-labelledby={id}>
-      <h4 id={id} className="inspector-title">
+      <h2 id={id} className="inspector-title">
         {title}
-      </h4>
+      </h2>
       <div className="inspector-rows">{children}</div>
     </section>
   );

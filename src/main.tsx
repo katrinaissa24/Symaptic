@@ -9,7 +9,7 @@ import './styles/ui.css';
 import './styles/editor.css';
 import './styles/chrome.css';
 import './styles/pages.css';
-import './index.css';
+import './styles/landing.css';
 
 applyTheme();
 

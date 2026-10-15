@@ -67,6 +67,9 @@ const edgeTypes = { branch: BranchEdge, thought: ThoughtEdge };
 const multiSelectKeys = ['Meta', 'Control', 'Shift'];
 
 const Inspector = lazy(() => import('./Inspector').then((m) => ({ default: m.Inspector })));
+/** Touch devices pan with one finger; the drag-box needs a mouse. */
+const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+const LONG_PRESS_MS = 500;
 
 type Menu = { items: MenuItem[]; x: number; y: number };
 
@@ -800,8 +803,21 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
 
   return (
     <EditorContext.Provider value={actions}>
-      <div className="editor-body">
-      <CanvasFrame>
+      <main className="editor-body" aria-label="Map canvas">
+      <CanvasFrame
+        onLongPress={(target, x, y) => {
+          const nodeEl = target.closest('.react-flow__node');
+          const id = nodeEl?.getAttribute('data-id');
+          if (id && graphRef.current.comments[id]) return setMenu({ items: commentMenu(menuApi(), id), x, y });
+          if (id && graphRef.current.nodes[id]) {
+            if (!canComment) return;
+            const ids = selectedNodeIds.includes(id) ? selectedNodeIds : [id];
+            if (!selectedNodeIds.includes(id)) selectOnly(id);
+            return setMenu({ items: nodeMenu(menuApi(), ids), x, y });
+          }
+          if (target.classList.contains('react-flow__pane')) setMenu({ items: paneMenu(menuApi(), rf.screenToFlowPosition({ x, y })), x, y });
+        }}
+      >
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}
@@ -869,9 +885,9 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
           }}
           onlyRenderVisibleElements
           deleteKeyCode={null}
-          selectionOnDrag={tool === 'select'}
+          selectionOnDrag={tool === 'select' && !COARSE}
           selectionMode={SelectionMode.Partial}
-          panOnDrag={tool === 'hand' ? true : [1]}
+          panOnDrag={tool === 'hand' || COARSE ? true : [1]}
           panActivationKeyCode="Space"
           selectionKeyCode={null}
           elementsSelectable={tool === 'select'}
@@ -915,15 +931,39 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
           </Suspense>
         </InspectorGate>
       )}
-      </div>
+      </main>
     </EditorContext.Provider>
   );
 }
 
 /** Wrapper that owns the "connecting" class so the editor itself doesn't re-render for it. */
-function CanvasFrame({ children }: { children: React.ReactNode }) {
+function CanvasFrame({ children, onLongPress }: { children: React.ReactNode; onLongPress?(target: Element, x: number, y: number): void }) {
   const connecting = useUIStore((s) => s.connectingFrom !== null);
-  return <div className={`canvas${connecting ? ' connecting' : ''}`}>{children}</div>;
+  const press = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const cancel = () => {
+    if (press.current) clearTimeout(press.current.timer);
+    press.current = null;
+  };
+  return (
+    <div
+      className={`canvas${connecting ? ' connecting' : ''}`}
+      onPointerDownCapture={(e) => {
+        if (e.pointerType !== 'touch' || !onLongPress) return;
+        cancel();
+        const target = e.target as Element;
+        const x = e.clientX;
+        const y = e.clientY;
+        press.current = { x, y, timer: window.setTimeout(() => onLongPress(target, x, y), LONG_PRESS_MS) };
+      }}
+      onPointerMoveCapture={(e) => {
+        if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) cancel();
+      }}
+      onPointerUpCapture={cancel}
+      onPointerCancelCapture={cancel}
+    >
+      {children}
+    </div>
+  );
 }
 
 /** Hides the inspector while a node is being edited. */

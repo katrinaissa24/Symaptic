@@ -57,8 +57,9 @@ export function AccountMenu() {
     <>
       <Menu
         trigger={
-          <button className="avatar-btn" aria-label={`Account: ${user.name}`}>
-            <Avatar user={user} />
+          <button className="avatar-btn">
+            <Avatar user={user} title={user.name} />
+            <span className="visually-hidden">Account menu</span>
           </button>
         }
         items={items}

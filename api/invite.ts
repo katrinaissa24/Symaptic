@@ -21,26 +21,23 @@ const ROLE_TEXT: Record<string, string> = {
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+// Email clients need inline colours; these mirror the light theme tokens in src/styles/tokens.css.
 function emailHtml(o: { inviter: string; title: string; role: string; url: string }) {
-  const bars = ['#3cc9b0', '#86c440', '#f2c94c', '#f29a55', '#e8606e', '#c58ae0', '#6f96dc']
-    .map((c) => `<td style="background:${c};height:6px;width:14%"></td>`)
-    .join('');
-  return `<!doctype html><html><body style="margin:0;background:#fbf9f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#2a2233">
+  return `<!doctype html><html><body style="margin:0;background:#fafafa;font-family:Inter,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#18181b">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px"><tr><td align="center">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:24px;overflow:hidden">
-    <tr>${bars}</tr>
-    <tr><td style="padding:32px 32px 8px;font-size:15px;color:#958ca0;font-weight:700">symaptic</td></tr>
-    <tr><td style="padding:0 32px;font-size:24px;font-weight:800;line-height:1.25">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e4e4e7;border-radius:12px">
+    <tr><td style="padding:28px 32px 4px;font-size:14px;color:#6b6b74;font-weight:600">Symaptic</td></tr>
+    <tr><td style="padding:0 32px;font-size:20px;font-weight:600;line-height:1.3">
       ${esc(o.inviter)} invited you to ${ROLE_TEXT[o.role] ?? 'view'} “${esc(o.title)}”
     </td></tr>
-    <tr><td style="padding:14px 32px 0;font-size:15px;line-height:1.5;color:#5d5468">
+    <tr><td style="padding:12px 32px 0;font-size:14px;line-height:1.5;color:#52525b">
       Sign in with this email address (or Google) to open the mind map.
     </td></tr>
-    <tr><td style="padding:26px 32px 34px">
-      <a href="${o.url}" style="display:inline-block;background:#9b5fc0;color:#fff;text-decoration:none;font-weight:800;padding:14px 26px;border-radius:999px;font-size:15px">Open the map →</a>
+    <tr><td style="padding:24px 32px 32px">
+      <a href="${o.url}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:6px;font-size:14px">Open the map</a>
     </td></tr>
   </table>
-  <p style="font-size:12px;color:#958ca0">If you weren’t expecting this, you can ignore it.</p>
+  <p style="font-size:12px;color:#6b6b74">If you weren’t expecting this, you can ignore it.</p>
   </td></tr></table></body></html>`;
 }
 

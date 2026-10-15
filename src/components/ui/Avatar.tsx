@@ -16,7 +16,7 @@ export function avatarColors(seed: string): React.CSSProperties {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   const hue = HUES[h % HUES.length];
-  return { ['--avatar-bg' as string]: `hsl(${hue} 45% 90%)`, ['--avatar-fg' as string]: `hsl(${hue} 50% 32%)` };
+  return { ['--avatar-bg' as string]: `hsl(${hue} 45% 91%)`, ['--avatar-fg' as string]: `hsl(${hue} 55% 26%)` };
 }
 
 export function Avatar({

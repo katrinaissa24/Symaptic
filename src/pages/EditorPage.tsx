@@ -7,6 +7,9 @@ import { useMapDoc } from '../editor/useMapDoc';
 import { MapEditor } from '../editor/MapEditor';
 import { Logo } from '../components/Logo';
 import { EditorTopBar } from '../editor/EditorTopBar';
+import { usePageTitle } from '../lib/usePageTitle';
+import { Button } from '../components/ui';
+import { Lock, SearchX } from 'lucide-react';
 import { EditorSkeleton } from '../components/Skeleton';
 import { toast } from '../components/Toast';
 
@@ -31,30 +34,38 @@ export default function EditorPage() {
       : (e as Error).message));
   }, [loading, user, linkRole]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (api.meta) document.title = `${api.meta.title} · Symaptic`;
-  }, [api.meta]);
+  usePageTitle(api.meta?.title ?? (api.status === 'loading' ? 'Loading…' : api.status === 'missing' ? 'Map not found' : 'No access'));
 
   if (loading || api.status === 'loading') return <EditorSkeleton />;
 
   if (api.status !== 'ready' || !api.meta || !api.graph) {
+    const missing = api.status === 'missing';
     return (
-      <div className="center-screen">
-        <div className="empty-card">
+      <main className="error-page page-enter">
+        <div className="error-card">
           <Logo />
-          <h2>{api.status === 'missing' ? 'This map doesn’t exist' : 'You don’t have access to this map'}</h2>
+          {missing ? <SearchX /> : <Lock />}
+          <h2>{missing ? 'This map doesn’t exist' : 'You don’t have access to this map'}</h2>
           <p>
-            {user && !user.isAnonymous
-              ? `You’re signed in as ${user.email}. Ask the owner to share it with this address.`
-              : 'If it was shared with your email, sign in with that address.'}
+            {missing
+              ? 'It may have been deleted, or the link is wrong.'
+              : user && !user.isAnonymous
+                ? `You’re signed in as ${user.email}. Ask the owner to share it with this address.`
+                : 'If it was shared with your email, sign in with that address.'}
           </p>
-          {user && !user.isAnonymous ? (
-            <Link className="btn btn-primary" to="/app">Back to my maps</Link>
-          ) : (
-            <Link className="btn btn-primary" to={`/login?next=/d/${id}`}>Sign in</Link>
-          )}
+          <div className="error-actions">
+            {user && !user.isAnonymous ? (
+              <Button variant="primary" asChild>
+                <Link to="/app">Back to my maps</Link>
+              </Button>
+            ) : (
+              <Button variant="primary" asChild>
+                <Link to={`/login?next=/d/${id}`}>Sign in</Link>
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -63,7 +74,7 @@ export default function EditorPage() {
   const canComment = canEdit || access === 'comment';
 
   return (
-    <div className="editor-page">
+    <div className="editor-page page-enter">
       <EditorTopBar
         doc={api.meta}
         user={user}
