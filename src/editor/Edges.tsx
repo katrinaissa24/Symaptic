@@ -17,9 +17,12 @@ export type BranchRFEdge = Edge<{ edge: MapEdge; targetShape: Shape; sourceShape
 export type ThoughtRFEdge = Edge<Record<string, never>, 'thought'>;
 
 function boxOf(n: InternalNode | undefined): Box | null {
-  if (!n || !n.measured.width || !n.measured.height) return null;
+  if (!n) return null;
+  const w = n.measured.width ?? n.initialWidth;
+  const h = n.measured.height ?? n.initialHeight;
+  if (!w || !h) return null;
   const p = n.internals.positionAbsolute;
-  return { x: p.x, y: p.y, w: n.measured.width, h: n.measured.height };
+  return { x: p.x, y: p.y, w, h };
 }
 
 const DASH = { solid: undefined, dashed: '10 7', dotted: '0.5 7' } as const;
@@ -54,7 +57,6 @@ function BranchEdgeImpl({ id, source, target, data, selected }: EdgeProps<Branch
         />
       )}
       {e.arrow && <path d={arrowHead(b, dir, Math.max(4, tipW * 1.4))} fill={e.color} />}
-      {/* fat invisible hit area */}
       <path id={id} d={line} fill="none" stroke="transparent" strokeWidth={Math.max(16, e.width + 10)} className="branch-hit" />
     </g>
   );
@@ -65,7 +67,6 @@ function ThoughtEdgeImpl({ source, target }: EdgeProps<ThoughtRFEdge>) {
   const s = boxOf(useInternalNode(source));
   const t = boxOf(useInternalNode(target));
   if (!s || !t) return null;
-  // Aim at the cloud part of the bubble (top area), not the open thread panel.
   const cloudBox: Box = { ...t, h: Math.min(t.h, 90) };
   const a = boxExit(s, center(cloudBox));
   const b = boxExit(cloudBox, center(s));
@@ -77,13 +78,7 @@ function ThoughtEdgeImpl({ source, target }: EdgeProps<ThoughtRFEdge>) {
   return (
     <g className="thought-puffs">
       {puffs.map((p) => (
-        <ellipse
-          key={p.k}
-          cx={a.x + (b.x - a.x) * p.k}
-          cy={a.y + (b.y - a.y) * p.k}
-          rx={p.r * 1.15}
-          ry={p.r}
-        />
+        <ellipse key={p.k} cx={a.x + (b.x - a.x) * p.k} cy={a.y + (b.y - a.y) * p.k} rx={p.r * 1.15} ry={p.r} />
       ))}
     </g>
   );

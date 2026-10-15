@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { browserLocalPersistence, indexedDBLocalPersistence, initializeAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
 const config = {
@@ -18,7 +18,9 @@ let db: Firestore | null = null;
 
 if (isFirebaseConfigured) {
   app = initializeApp(config);
-  auth = getAuth(app);
+  // No popupRedirectResolver here: that keeps the Google sign-in (gapi) iframe from loading on
+  // every page. The resolver is passed explicitly where a popup is actually opened (lib/auth.tsx).
+  auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
   db = getFirestore(app);
 }
 

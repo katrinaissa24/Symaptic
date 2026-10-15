@@ -3,6 +3,8 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { MapComment } from '../lib/types';
 import { cloudPath } from './geometry';
 import { useEditor } from './EditorContext';
+import { useUIStore } from './uiStore';
+import { perfCount } from '../lib/perf';
 import { uid } from '../lib/store';
 import { isMine } from './ops';
 
@@ -28,10 +30,11 @@ function ago(ts: number) {
 }
 
 function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
+  perfCount('CommentNode');
   const c = data.comment;
   const ed = useEditor();
   const mine = isMine(c, ed.user);
-  const open = ed.openCommentId === id;
+  const open = useUIStore((s) => s.openCommentId === id);
   const [editing, setEditing] = useState(mine && !c.text);
   const [draft, setDraft] = useState(c.text);
   const [reply, setReply] = useState('');
@@ -185,4 +188,4 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
   );
 }
 
-export const CommentNode = memo(CommentNodeImpl);
+export const CommentNode = memo(CommentNodeImpl, (a, b) => a.id === b.id && a.data === b.data && a.selected === b.selected);

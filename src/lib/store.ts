@@ -63,13 +63,18 @@ const clean = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 interface Store {
   listOwned(user: AppUser): Promise<MapDoc[]>;
   listShared(user: AppUser): Promise<MapDoc[]>;
-  create(user: AppUser, title: string): Promise<string>;
+  create(user: AppUser, title: string, graph?: Graph): Promise<string>;
+  /**
+   * Optimistic create: the id is available immediately and `subscribe(id)` serves the new map
+   * while the write is still in flight. `done` rejects if the write failed.
+   */
+  createOptimistic(user: AppUser, title: string, graph?: Graph): { id: string; done: Promise<void> };
   remove(id: string): Promise<void>;
   subscribe(id: string, cb: (d: MapDoc | null, err?: Error) => void): () => void;
   applyPatch(id: string, patch: Patch): Promise<void>;
 }
 
-function newDoc(user: AppUser, id: string, title: string): MapDoc {
+function newDoc(user: AppUser, id: string, title: string, graph?: Graph): MapDoc {
   const now = Date.now();
   return {
     id,
@@ -82,9 +87,12 @@ function newDoc(user: AppUser, id: string, title: string): MapDoc {
     linkRole: 'none',
     createdAt: now,
     updatedAt: now,
-    ...starterGraph(),
+    ...(graph ?? starterGraph()),
   };
 }
+
+/** Maps whose first write hasn't been confirmed yet (Firebase only). */
+const pending = new Map<string, MapDoc>();
 
 // ---------------------------------------------------------------- Firebase
 
@@ -100,20 +108,32 @@ const firebaseStore: Store = {
     );
     return snap.docs.map((s) => ({ ...(s.data() as MapDoc), id: s.id }));
   },
-  async create(user, title) {
+  createOptimistic(user, title, graph) {
     const id = uid();
-    const { id: _omit, ...data } = newDoc(user, id, title);
+    const d = newDoc(user, id, title, graph);
+    const { id: _omit, ...data } = d;
     void _omit;
-    await setDoc(doc(db!, 'docs', id), clean(data));
-    return id;
+    pending.set(id, d);
+    const done = setDoc(doc(db!, 'docs', id), clean(data)).finally(() => pending.delete(id));
+    return { id, done };
+  },
+  async create(user, title, graph) {
+    const r = firebaseStore.createOptimistic(user, title, graph);
+    await r.done;
+    return r.id;
   },
   async remove(id) {
     await deleteDoc(doc(db!, 'docs', id));
   },
   subscribe(id, cb) {
+    const p = pending.get(id);
+    if (p) queueMicrotask(() => cb(p));
     return onSnapshot(
       doc(db!, 'docs', id),
-      (s) => cb(s.exists() ? ({ ...(s.data() as MapDoc), id: s.id }) : null),
+      (s) => {
+        if (!s.exists() && pending.has(id)) return; // still being written
+        cb(s.exists() ? ({ ...(s.data() as MapDoc), id: s.id }) : null);
+      },
       (err) => cb(null, err),
     );
   },
@@ -157,12 +177,15 @@ const localStore: Store = {
     if (!user.email) return [];
     return Object.values(readAll()).filter((d) => d.memberEmails.includes(user.email.toLowerCase()));
   },
-  async create(user, title) {
+  createOptimistic(user, title, graph) {
     const id = uid();
     const all = readAll();
-    all[id] = newDoc(user, id, title);
+    all[id] = newDoc(user, id, title, graph);
     writeAll(all);
-    return id;
+    return { id, done: Promise.resolve() };
+  },
+  async create(user, title, graph) {
+    return localStore.createOptimistic(user, title, graph).id;
   },
   async remove(id) {
     const all = readAll();

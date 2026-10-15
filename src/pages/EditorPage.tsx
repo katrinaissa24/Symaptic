@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useAuth } from '../lib/auth';
 import { accessFor } from '../lib/store';
 import { useMapDoc } from '../editor/useMapDoc';
 import { MapEditor } from '../editor/MapEditor';
-import { ShareDialog } from '../components/ShareDialog';
 import { Icon } from '../editor/icons';
 import { Logo } from '../components/Logo';
 import { AccountMenu } from '../components/AccountMenu';
+import { EditorSkeleton } from '../components/Skeleton';
+import { toast } from '../components/Toast';
+
+const ShareDialog = lazy(() => import('../components/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 const ROLE_BADGE = { owner: 'Owner', edit: 'Editor', comment: 'Commenter', view: 'Viewer', none: '' } as const;
 
@@ -38,7 +41,7 @@ export default function EditorPage() {
     if (api.meta) document.title = `${api.meta.title} · Symaptic`;
   }, [api.meta]);
 
-  if (loading || api.status === 'loading') return <div className="center-screen"><div className="spinner" /></div>;
+  if (loading || api.status === 'loading') return <EditorSkeleton />;
 
   if (api.status !== 'ready' || !api.meta || !api.graph) {
     return (
@@ -75,10 +78,20 @@ export default function EditorPage() {
           value={title}
           disabled={!canEdit}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => title.trim() && title !== api.meta!.title && api.updateMeta({ title: title.trim() })}
+          onBlur={() => {
+            const t = title.trim();
+            if (!t || t === api.meta!.title) return setTitle(api.meta!.title);
+            api.updateMeta({ title: t }).catch(() => {
+              setTitle(api.meta!.title);
+              toast.error('Couldn’t rename the map');
+            });
+          }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
-        <span className={`save-dot ${api.save}`} title={api.save === 'saved' ? 'All changes saved' : api.save === 'saving' ? 'Saving…' : 'Could not save'} />
+        <span className={`save-state ${api.save}`} role="status">
+          <span className={`save-dot ${api.save}`} />
+          {api.save === 'saved' ? 'Saved' : api.save === 'saving' ? 'Saving…' : api.save === 'offline' ? 'Offline' : <button className="save-retry" onClick={api.retrySave}>Couldn’t save · Retry</button>}
+        </span>
         <div className="spacer" />
         {(canEdit || canComment) && (
           <>
@@ -111,7 +124,9 @@ export default function EditorPage() {
       </ReactFlowProvider>
 
       {sharing && user && (
-        <ShareDialog doc={api.meta} user={user} updateMeta={api.updateMeta} getIdToken={getIdToken} onClose={() => setSharing(false)} />
+        <Suspense fallback={null}>
+          <ShareDialog doc={api.meta} user={user} updateMeta={api.updateMeta} getIdToken={getIdToken} onClose={() => setSharing(false)} />
+        </Suspense>
       )}
     </div>
   );

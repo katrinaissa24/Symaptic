@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import {
+  browserPopupRedirectResolver,
   EmailAuthProvider,
   GoogleAuthProvider,
   isSignInWithEmailLink,
@@ -113,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cur?.isAnonymous) {
         // Upgrade the guest account in place so their maps come along.
         try {
-          await linkWithPopup(cur, provider);
+          await linkWithPopup(cur, provider, browserPopupRedirectResolver);
           await refresh();
           return;
         } catch (e) {
@@ -125,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-      await signInWithPopup(auth!, provider);
+      await signInWithPopup(auth!, provider, browserPopupRedirectResolver);
     },
     async sendMagicLink(email, next) {
       const url = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;

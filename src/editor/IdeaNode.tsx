@@ -1,9 +1,10 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { MapNode } from '../lib/types';
 import { readableOn, shade, tint } from '../lib/palette';
 import { SHAPE_PATHS } from './geometry';
 import { useEditor } from './EditorContext';
+import { useUIStore } from './uiStore';
 import type { Dir } from './ops';
 import { perfCount } from '../lib/perf';
 
@@ -20,30 +21,36 @@ function colors(n: MapNode) {
 }
 
 const DASH = { solid: undefined, dashed: '7 5', dotted: '1.5 4.5' } as const;
+const DIRS: Dir[] = ['right', 'left', 'down'];
 
 function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
   perfCount('IdeaNode');
   const n = data.node;
   const ed = useEditor();
-  const editing = ed.editingId === id;
-  const { bg, fg, border } = colors(n);
+  const editing = useUIStore((s) => s.editingId === id);
+  const connectTarget = useUIStore((s) => s.connectingFrom !== null && s.connectingFrom !== id);
   const pathShape = SHAPE_PATHS[n.shape];
 
-  const style: React.CSSProperties = {
-    ['--bg' as string]: bg,
-    ['--fg' as string]: fg,
-    ['--bc' as string]: border,
-    ['--bw' as string]: `${n.borderWidth}px`,
-    ['--bs' as string]: n.borderStyle,
-    fontSize: n.fontSize,
-    fontWeight: n.bold ? 700 : 500,
-  };
+  const { bg, fg, border } = useMemo(() => colors(n), [n]);
+  const style = useMemo<React.CSSProperties>(
+    () => ({
+      ['--bg' as string]: bg,
+      ['--fg' as string]: fg,
+      ['--bc' as string]: border,
+      ['--bw' as string]: `${n.borderWidth}px`,
+      ['--bs' as string]: n.borderStyle,
+      ['--c' as string]: n.color,
+      fontSize: n.fontSize,
+      fontWeight: n.bold ? 700 : 500,
+    }),
+    [bg, fg, border, n.borderWidth, n.borderStyle, n.color, n.fontSize, n.bold],
+  );
+
+  const className = `idea shape-${n.shape}${pathShape ? ' path-shape' : ''}${selected ? ' is-selected' : ''}${connectTarget ? ' connect-target' : ''}${n.root ? ' is-root' : ''}`;
 
   return (
     <div
-      className={`idea shape-${n.shape} ${pathShape ? 'path-shape' : ''} ${selected ? 'is-selected' : ''} ${
-        ed.connectingFrom && ed.connectingFrom !== id ? 'connect-target' : ''
-      } ${n.root ? 'is-root' : ''}`}
+      className={className}
       style={style}
       onDoubleClick={(e) => {
         if (!ed.canEdit) return;
@@ -51,51 +58,52 @@ function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
         ed.setEditingId(id);
       }}
     >
-      {pathShape && (
-        <svg className="shape-bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          <path
-            d={pathShape}
-            fill={bg === 'transparent' ? 'none' : bg}
-            stroke={border}
-            strokeWidth={n.borderWidth}
-            strokeDasharray={DASH[n.borderStyle]}
-            vectorEffect="non-scaling-stroke"
-            strokeLinejoin="round"
+      <div className="idea-box">
+        {pathShape && (
+          <svg className="shape-bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+            <path
+              d={pathShape}
+              fill={bg === 'transparent' ? 'none' : bg}
+              stroke={border}
+              strokeWidth={n.borderWidth}
+              strokeDasharray={DASH[n.borderStyle]}
+              vectorEffect="non-scaling-stroke"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+        {editing ? (
+          <NodeTextEditor
+            initial={n.text}
+            onDone={(t) => ed.setNodeText(id, t)}
+            onCancel={() => ed.setEditingId(null)}
+            onTab={(t) => ed.textThenChild(id, t)}
+            onEnter={(t) => ed.textThenSibling(id, t)}
           />
-        </svg>
-      )}
-      {editing ? (
-        <NodeTextEditor
-          initial={n.text}
-          onDone={(t) => ed.setNodeText(id, t)}
-          onCancel={() => ed.setEditingId(null)}
-          onTab={(t) => ed.textThenChild(id, t)}
-        />
-      ) : (
-        <div className="idea-text">{n.text || ' '}</div>
-      )}
+        ) : (
+          <div className="idea-text">{n.text || ' '}</div>
+        )}
+      </div>
       <Handle type="target" position={Position.Left} className="ghost-handle" isConnectable={false} />
       <Handle type="source" position={Position.Right} className="ghost-handle" isConnectable={false} />
-      {ed.canEdit && !editing && (
-        <>
-          {(['right', 'left', 'down'] as Dir[]).map((d) => (
-            <button
-              key={d}
-              className={`sprout sprout-${d} nodrag nopan`}
-              title="Click to add an idea · drag to place it or link to another node"
-              style={{ ['--c' as string]: n.color }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                ed.startSprout(id, d, e);
-              }}
-            >
-              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden>
-                <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-              </svg>
-            </button>
-          ))}
-        </>
-      )}
+      {ed.canEdit && !editing &&
+        DIRS.map((d) => (
+          <button
+            key={d}
+            type="button"
+            className={`sprout sprout-${d} nodrag nopan`}
+            aria-label={`Add idea ${d === 'down' ? 'below' : `to the ${d}`}`}
+            title="Click to add an idea · drag to place it or link to another idea"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              ed.startSprout(id, d, e);
+            }}
+          >
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden>
+              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+            </svg>
+          </button>
+        ))}
     </div>
   );
 }
@@ -105,6 +113,7 @@ function NodeTextEditor(props: {
   onDone(t: string): void;
   onCancel(): void;
   onTab(t: string): void;
+  onEnter(t: string): void;
 }) {
   const [value, setValue] = useState(props.initial);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -134,28 +143,33 @@ function NodeTextEditor(props: {
 
   return (
     <div className="grow-wrap" data-value={value}>
-    <textarea
-      ref={ref}
-      className="idea-input nodrag nopan nowheel"
-      value={value}
-      rows={1}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => finish(() => props.onDone(value))}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          finish(() => props.onDone(value));
-        } else if (e.key === 'Escape') {
-          finish(props.onCancel);
-        } else if (e.key === 'Tab') {
-          e.preventDefault();
-          finish(() => props.onTab(value));
-        }
-      }}
-    />
+      <textarea
+        ref={ref}
+        className="idea-input nodrag nopan nowheel"
+        aria-label="Idea text"
+        value={value}
+        rows={1}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => finish(() => props.onDone(value))}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            finish(() => (e.metaKey || e.ctrlKey ? props.onDone(value) : props.onEnter(value)));
+          } else if (e.key === 'Escape') {
+            finish(props.onCancel);
+          } else if (e.key === 'Tab') {
+            e.preventDefault();
+            finish(() => props.onTab(value));
+          }
+        }}
+      />
     </div>
   );
 }
 
-export const IdeaNode = memo(IdeaNodeImpl);
+/** Position props change every frame while dragging; the component only cares about its data and selection. */
+export const IdeaNode = memo(
+  IdeaNodeImpl,
+  (a, b) => a.id === b.id && a.data === b.data && a.selected === b.selected,
+);

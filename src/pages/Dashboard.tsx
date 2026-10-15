@@ -6,6 +6,8 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import type { MapDoc } from '../lib/types';
 import { Logo } from '../components/Logo';
 import { AccountMenu } from '../components/AccountMenu';
+import { CardSkeleton } from '../components/Skeleton';
+import { toast } from '../components/Toast';
 
 function Thumb({ d }: { d: MapDoc }) {
   const nodes = Object.values(d.nodes ?? {});
@@ -57,14 +59,22 @@ export default function Dashboard() {
   if (loading) return <div className="center-screen"><div className="spinner" /></div>;
   if (!user) return <Navigate to="/login?next=/app" replace />;
 
-  const create = async () => {
-    const id = await store.create(user, 'Untitled map');
+  // Optimistic: navigate straight into the new map; the editor serves it while the write lands.
+  const create = () => {
+    const { id, done } = store.createOptimistic(user, 'Untitled map');
+    done.catch((e: Error) => toast.error('Couldn’t create the map', { description: e.message }));
     nav(`/d/${id}`);
   };
   const remove = async (d: MapDoc) => {
     if (!confirm(`Delete “${d.title}” for everyone? This can't be undone.`)) return;
-    await store.remove(d.id);
+    const before = mine;
     setMine((m) => m?.filter((x) => x.id !== d.id) ?? null);
+    try {
+      await store.remove(d.id);
+    } catch (e) {
+      setMine(before);
+      toast.error('Couldn’t delete the map', { description: (e as Error).message });
+    }
   };
 
   const list = tab === 'mine' ? mine : shared;
@@ -127,7 +137,7 @@ export default function Dashboard() {
             </div>
           ))}
           {list && !list.length && tab === 'shared' && <p className="muted">{user.isAnonymous ? 'Sign in with your email to see maps people have shared with you.' : `Nothing shared with you yet. Maps people share with ${user.email} show up here.`}</p>}
-          {!list && <div className="spinner" />}
+          {!list && [0, 1, 2].map((i) => <CardSkeleton key={i} />)}
         </div>
       </main>
     </div>

@@ -307,3 +307,23 @@ export function updateComment(g: Graph, id: string, props: Partial<MapComment>):
   return { ...g, comments: { ...g.comments, [id]: { ...c, ...props } } };
 }
 
+
+/** Move nodes and comments to the given positions (rounded). Used once at the end of a drag. */
+export function moveItems(g: Graph, pos: Map<string, Pt>): Graph {
+  let nodes = g.nodes;
+  let comments = g.comments;
+  for (const [id, p] of pos) {
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    if (g.nodes[id]) {
+      if (g.nodes[id].x === x && g.nodes[id].y === y) continue;
+      if (nodes === g.nodes) nodes = { ...g.nodes };
+      nodes[id] = { ...g.nodes[id], x, y };
+    } else if (g.comments[id]) {
+      if (g.comments[id].x === x && g.comments[id].y === y) continue;
+      if (comments === g.comments) comments = { ...g.comments };
+      comments[id] = { ...g.comments[id], x, y };
+    }
+  }
+  return nodes === g.nodes && comments === g.comments ? g : { ...g, nodes, comments };
+}

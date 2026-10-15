@@ -5,12 +5,50 @@ import type { Graph, MapDoc, Patch } from '../lib/types';
 const COLS = ['nodes', 'edges', 'comments'] as const;
 type Col = (typeof COLS)[number];
 
-export type SaveState = 'saved' | 'saving' | 'error';
+/** Saves wait this long after the last edit… */
+const DEBOUNCE_MS = 600;
+/** …but never longer than this since the first unsaved edit. */
+const MAX_WAIT_MS = 2500;
+
+export type SaveState = 'saved' | 'saving' | 'error' | 'offline';
+
+function sameItem(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const ka = Object.keys(a as object);
+  const kb = Object.keys(b as object);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    const va = (a as Record<string, unknown>)[k];
+    const vb = (b as Record<string, unknown>)[k];
+    if (va === vb) continue;
+    if (typeof va === 'object' && typeof vb === 'object') {
+      if (JSON.stringify(va) !== JSON.stringify(vb)) return false;
+    } else return false;
+  }
+  return true;
+}
+
+/** Keep local item objects when the remote copy is identical, so unchanged nodes keep their identity. */
+function reuseCollection<T>(local: Record<string, T> | undefined, remote: Record<string, T>): Record<string, T> {
+  if (!local) return remote;
+  const out: Record<string, T> = {};
+  let identical = Object.keys(local).length === Object.keys(remote).length;
+  for (const [k, v] of Object.entries(remote)) {
+    const l = local[k];
+    if (l !== undefined && sameItem(l, v)) out[k] = l;
+    else {
+      out[k] = v;
+      identical = false;
+    }
+  }
+  return identical ? local : out;
+}
 
 /**
  * Keeps a local copy of the map in sync with the store.
  * Local edits are diffed per item (node/edge/comment) and written as field-level patches,
- * so two people editing different nodes never overwrite each other.
+ * so two people editing different nodes never overwrite each other. Saves are debounced.
  */
 export function useMapDoc(id: string) {
   const [meta, setMeta] = useState<MapDoc | null>(null);
@@ -21,6 +59,8 @@ export function useMapDoc(id: string) {
 
   const graphRef = useRef<Graph | null>(null);
   const dirty = useRef(new Set<string>());
+  const firstDirtyAt = useRef(0);
+  const inflight = useRef(0);
   const timer = useRef<number | null>(null);
   const past = useRef<Graph[]>([]);
   const future = useRef<Graph[]>([]);
@@ -31,28 +71,72 @@ export function useMapDoc(id: string) {
   };
 
   const flush = useCallback(() => {
+    if (timer.current != null) clearTimeout(timer.current);
     timer.current = null;
     const g = graphRef.current;
     if (!g || !dirty.current.size) return;
+    if (!navigator.onLine) {
+      setSave('offline');
+      return;
+    }
+    const keys = [...dirty.current];
     const patch: Patch = {};
-    for (const key of dirty.current) {
+    for (const key of keys) {
       const [col, itemId] = key.split('.') as [Col, string];
       patch[key] = g[col][itemId] ?? null;
     }
     dirty.current.clear();
+    firstDirtyAt.current = 0;
+    inflight.current++;
     setSave('saving');
     store.applyPatch(id, patch).then(
-      () => setSave(dirty.current.size ? 'saving' : 'saved'),
+      () => {
+        inflight.current--;
+        setSave(dirty.current.size || inflight.current ? 'saving' : 'saved');
+      },
       (e) => {
+        inflight.current--;
         console.error(e);
+        // Put the failed keys back so a retry (or the next edit) sends them again.
+        for (const k of keys) dirty.current.add(k);
+        if (!firstDirtyAt.current) firstDirtyAt.current = Date.now();
         setSave('error');
       },
     );
   }, [id]);
 
   const schedule = useCallback(() => {
-    // Throttle rather than debounce so collaborators see drags move live.
-    if (timer.current == null) timer.current = window.setTimeout(flush, 180);
+    const now = Date.now();
+    if (!firstDirtyAt.current) firstDirtyAt.current = now;
+    if (timer.current != null) clearTimeout(timer.current);
+    const wait = Math.max(0, Math.min(DEBOUNCE_MS, MAX_WAIT_MS - (now - firstDirtyAt.current)));
+    timer.current = window.setTimeout(flush, wait);
+  }, [flush]);
+
+  // Retry automatically when the connection comes back; flush when the tab is hidden.
+  useEffect(() => {
+    const online = () => {
+      if (dirty.current.size) flush();
+      else setSave((s) => (s === 'offline' ? 'saved' : s));
+    };
+    const offline = () => setSave((s) => (dirty.current.size || inflight.current ? 'offline' : s));
+    const hidden = () => document.visibilityState === 'hidden' && dirty.current.size && flush();
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (dirty.current.size || inflight.current) {
+        flush();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    document.addEventListener('visibilitychange', hidden);
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+      document.removeEventListener('visibilitychange', hidden);
+      window.removeEventListener('beforeunload', beforeUnload);
+    };
   }, [flush]);
 
   useEffect(() => {
@@ -68,39 +152,42 @@ export function useMapDoc(id: string) {
         setStatus('missing');
         return;
       }
-      setMeta(d);
-      const remote: Graph = { nodes: d.nodes ?? {}, edges: d.edges ?? {}, comments: d.comments ?? {} };
+      setMeta((m) => (m && sameItem(m, d) ? m : d));
       const local = graphRef.current;
+      let remote: Graph = {
+        nodes: reuseCollection(local?.nodes, d.nodes ?? {}),
+        edges: reuseCollection(local?.edges, d.edges ?? {}),
+        comments: reuseCollection(local?.comments, d.comments ?? {}),
+      };
       if (local && dirty.current.size) {
         // Keep our own unsent edits on top of what the server says.
         for (const key of dirty.current) {
           const [col, itemId] = key.split('.') as [Col, string];
           const mine = local[col][itemId];
-          remote[col] = { ...remote[col] } as never;
+          remote = { ...remote, [col]: { ...remote[col] } };
           if (mine) (remote[col] as Record<string, unknown>)[itemId] = mine;
           else delete (remote[col] as Record<string, unknown>)[itemId];
         }
       }
-      setGraph(remote);
+      if (local && remote.nodes === local.nodes && remote.edges === local.edges && remote.comments === local.comments) remote = local;
+      if (remote !== local) setGraph(remote);
       setStatus('ready');
     });
     return () => {
       unsub();
-      if (timer.current != null) {
-        clearTimeout(timer.current);
-        flush();
-      }
+      if (dirty.current.size) flush();
     };
   }, [id, flush]);
 
   const markDiff = (a: Graph, b: Graph) => {
     for (const col of COLS) {
+      if (a[col] === b[col]) continue;
       const keys = new Set([...Object.keys(a[col]), ...Object.keys(b[col])]);
       for (const k of keys) if (a[col][k] !== b[col][k]) dirty.current.add(`${col}.${k}`);
     }
   };
 
-  /** Apply a change. `history: false` is for continuous gestures (drag) whose start was already snapshotted. */
+  /** Apply a change. `history: false` is for gestures (drag) whose start was already snapshotted. */
   const commit = useCallback(
     (fn: (g: Graph) => Graph, opts: { history?: boolean } = {}) => {
       const prev = graphRef.current;
@@ -143,11 +230,20 @@ export function useMapDoc(id: string) {
   const undo = useCallback(() => travel(past, future), [travel]);
   const redo = useCallback(() => travel(future, past), [travel]);
 
-  /** Top-level document fields (title, sharing). */
+  /** Top-level document fields (title, sharing). Applied optimistically, rolled back on failure. */
   const updateMeta = useCallback(
     async (patch: Patch) => {
-      setMeta((m) => (m ? ({ ...m, ...patch } as MapDoc) : m));
-      await store.applyPatch(id, patch);
+      let before: MapDoc | null = null;
+      setMeta((m) => {
+        before = m;
+        return m ? ({ ...m, ...patch } as MapDoc) : m;
+      });
+      try {
+        await store.applyPatch(id, patch);
+      } catch (e) {
+        if (before) setMeta(before);
+        throw e;
+      }
     },
     [id],
   );
@@ -164,6 +260,7 @@ export function useMapDoc(id: string) {
     canUndo: past.current.length > 0,
     canRedo: future.current.length > 0,
     updateMeta,
+    retrySave: flush,
   };
 }
 
