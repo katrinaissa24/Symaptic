@@ -70,6 +70,8 @@ interface Store {
    */
   createOptimistic(user: AppUser, title: string, graph?: Graph): { id: string; done: Promise<void> };
   remove(id: string): Promise<void>;
+  /** Rename or otherwise patch top-level fields of a map without opening it. */
+  patchMeta(id: string, patch: Patch): Promise<void>;
   subscribe(id: string, cb: (d: MapDoc | null, err?: Error) => void): () => void;
   applyPatch(id: string, patch: Patch): Promise<void>;
 }
@@ -88,7 +90,8 @@ function newDoc(user: AppUser, id: string, title: string, graph?: Graph): MapDoc
     createdAt: now,
     updatedAt: now,
     ...(graph ?? starterGraph()),
-    v: SCHEMA_VERSION,
+    // A copied legacy map keeps its (absent) version so it still renders with the legacy mapping.
+    v: graph ? graph.v : SCHEMA_VERSION,
   };
 }
 
@@ -125,6 +128,9 @@ const firebaseStore: Store = {
   },
   async remove(id) {
     await deleteDoc(doc(db!, 'docs', id));
+  },
+  patchMeta(id, patch) {
+    return firebaseStore.applyPatch(id, patch);
   },
   subscribe(id, cb) {
     const p = pending.get(id);
@@ -193,6 +199,9 @@ const localStore: Store = {
     delete all[id];
     writeAll(all);
     emit(id);
+  },
+  patchMeta(id, patch) {
+    return localStore.applyPatch(id, patch);
   },
   subscribe(id, cb) {
     if (!listeners.has(id)) listeners.set(id, new Set());
