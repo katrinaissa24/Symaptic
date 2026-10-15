@@ -1,30 +1,37 @@
-import type { CurveStyle, FillStyle, Graph, LineStyle, MapEdge, MapNode } from '../lib/types';
-import { PALETTE } from '../lib/palette';
+import { memo, useId } from 'react';
+import { X } from 'lucide-react';
+import type { CurveStyle, FillStyle, Graph, LineStyle, MapEdge, MapNode, Shape } from '../lib/types';
+import { PALETTE, displayHex, paletteKey } from '../lib/palette';
 import { SHAPE_LABELS, SHAPE_OPTIONS } from './geometry';
-import { displayBorderWidth, displayEdgeWidth, displayFontSize, isLegacy, storedBorderWidth, storedEdgeWidth, storedFontSize } from './compat';
 import { ShapeIcon } from './icons';
+import { IconButton, Segmented, Select, Slider, Stepper, Toggle, Tooltip } from '../components/ui';
 import { incomingEdgeIds, recolor, setEdgeProps, setNodeProps } from './ops';
-
-const SHAPES = SHAPE_OPTIONS;
-const SWATCHES = PALETTE.map((p) => p.hex);
-
-function Seg<T extends string>({ value, options, onChange }: { value?: T; options: [T, string][]; onChange(v: T): void }) {
-  return (
-    <div className="seg">
-      {options.map(([v, label]) => (
-        <button key={v} className={value === v ? 'on' : ''} onClick={() => onChange(v)}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { MAX_FONT, MIN_FONT, displayBorderWidth, displayEdgeWidth, displayFontSize, isLegacy, storedBorderWidth, storedEdgeWidth, storedFontSize } from './compat';
+import { perfCount } from '../lib/perf';
 
 const same = <T, K extends keyof T>(items: T[], k: K): T[K] | undefined =>
   items.length && items.every((i) => i[k] === items[0][k]) ? items[0][k] : undefined;
 
-import { memo } from 'react';
-import { perfCount } from '../lib/perf';
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const id = useId();
+  return (
+    <section className="inspector-section" aria-labelledby={id}>
+      <h4 id={id} className="inspector-title">
+        {title}
+      </h4>
+      <div className="inspector-rows">{children}</div>
+    </section>
+  );
+}
+
+function Row({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className={`inspector-row${wide ? ' is-wide' : ''}`}>
+      <span className="inspector-label">{label}</span>
+      <div className="inspector-control">{children}</div>
+    </div>
+  );
+}
 
 function InspectorImpl({
   graph,
@@ -41,7 +48,7 @@ function InspectorImpl({
 }) {
   perfCount('Inspector');
   const nodes = nodeIds.map((id) => graph.nodes[id]).filter(Boolean) as MapNode[];
-  // Branch settings apply to explicitly selected edges, or the branches leading into selected nodes.
+  // Branch settings apply to explicitly selected branches, or the branches leading into selected ideas.
   const branchIds = edgeIds.length ? edgeIds : incomingEdgeIds(graph, nodeIds);
   const edges = branchIds.map((id) => graph.edges[id]).filter(Boolean) as MapEdge[];
   if (!nodes.length && !edges.length) return null;
@@ -50,123 +57,148 @@ function InspectorImpl({
   const setN = (p: Partial<MapNode>) => commit((g) => setNodeProps(g, nodeIds, p));
   const setE = (p: Partial<MapEdge>) => commit((g) => setEdgeProps(g, branchIds, p));
   const color = same(nodes, 'color') ?? same(edges, 'color');
+  const colorKey = color ? paletteKey(color) : null;
   const fontSize = same(nodes, 'fontSize');
   const fontDisplay = fontSize === undefined ? undefined : displayFontSize(fontSize, legacy);
   const borderW = same(nodes, 'borderWidth');
   const borderDisplay = borderW === undefined ? undefined : displayBorderWidth(borderW, legacy);
   const edgeW = same(edges, 'width');
   const edgeDisplay = edgeW === undefined ? undefined : displayEdgeWidth(edgeW, legacy);
+  const curve = same(edges, 'curve');
+  const shape = same(nodes, 'shape');
+  const title = nodes.length ? (nodes.length === 1 ? (nodes[0].root ? 'Central idea' : 'Idea') : `${nodes.length} ideas`) : edges.length === 1 ? 'Branch' : `${edges.length} branches`;
 
   return (
-    <aside className="inspector" onKeyDown={(e) => e.stopPropagation()}>
-      <header>
-        <span>{nodes.length ? `${nodes.length} idea${nodes.length > 1 ? 's' : ''}` : `${edges.length} branch${edges.length > 1 ? 'es' : ''}`}</span>
-        <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close style panel">✕</button>
+    <aside className="inspector" aria-label="Style panel" onKeyDown={(e) => e.stopPropagation()}>
+      <header className="inspector-head">
+        <span className="inspector-heading">{title}</span>
+        <IconButton label="Close panel" size="sm" onClick={onClose}>
+          <X />
+        </IconButton>
       </header>
 
-      <section>
-        <h4>Colour</h4>
-        <div className="swatches">
-          {SWATCHES.map((c) => (
-            <button
-              key={c}
-              className={`swatch ${color === c ? 'on' : ''}`}
-              style={{ background: c }}
-              aria-label={c}
-              onClick={() => commit((g) => recolor(g, [...nodeIds, ...edgeIds], c))}
-            />
-          ))}
-          <label className="swatch custom" title="Custom colour">
-            <input type="color" value={color ?? '#c58ae0'} onChange={(e) => commit((g) => recolor(g, [...nodeIds, ...edgeIds], e.target.value))} />
-          </label>
-        </div>
-      </section>
+      <Section title="Style">
+        <Row label="Colour" wide>
+          <div className="swatches" role="radiogroup" aria-label="Colour">
+            {PALETTE.map((p) => (
+              <Tooltip key={p.key} content={p.name}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={colorKey === p.key}
+                  aria-label={p.name}
+                  className={`swatch${colorKey === p.key ? ' is-on' : ''}`}
+                  style={{ ['--sw' as string]: `var(--palette-${p.key})` }}
+                  onClick={() => commit((g) => recolor(g, [...nodeIds, ...edgeIds], p.hex))}
+                />
+              </Tooltip>
+            ))}
+            <Tooltip content="Custom colour">
+              <label className={`swatch swatch-custom${color && !colorKey ? ' is-on' : ''}`} style={{ ['--sw' as string]: color && !colorKey ? color : undefined }}>
+                <input
+                  type="color"
+                  aria-label="Custom colour"
+                  value={color ? displayHex(color) : '#6b7280'}
+                  onChange={(e) => commit((g) => recolor(g, [...nodeIds, ...edgeIds], e.target.value))}
+                />
+              </label>
+            </Tooltip>
+          </div>
+        </Row>
+        {nodes.length > 0 && (
+          <>
+            <Row label="Fill">
+              <Segmented<FillStyle>
+                ariaLabel="Fill"
+                value={same(nodes, 'fill')}
+                options={[
+                  { value: 'solid', label: 'Solid' },
+                  { value: 'soft', label: 'Soft' },
+                  { value: 'outline', label: 'Outline' },
+                ]}
+                onChange={(fill) => setN({ fill })}
+              />
+            </Row>
+            <Row label="Shape">
+              <Select<Shape>
+                ariaLabel="Shape"
+                value={(shape === 'underline' ? 'rounded' : shape) ?? 'rounded'}
+                onValueChange={(s) => setN({ shape: s })}
+                className="select-block"
+                options={SHAPE_OPTIONS.map((s) => ({
+                  value: s,
+                  label: (
+                    <span className="shape-option">
+                      <ShapeIcon shape={s} size={22} />
+                      {SHAPE_LABELS[s]}
+                    </span>
+                  ),
+                }))}
+              />
+            </Row>
+            <Row label="Border">
+              <Slider ariaLabel="Border width" min={0} max={3} step={0.5} value={borderDisplay ?? 1} unit="px" onChange={(v) => setN({ borderWidth: storedBorderWidth(v, legacy) })} />
+            </Row>
+            <Row label="">
+              <Segmented<LineStyle>
+                ariaLabel="Border style"
+                value={same(nodes, 'borderStyle')}
+                options={[
+                  { value: 'solid', label: 'Solid' },
+                  { value: 'dashed', label: 'Dashed' },
+                  { value: 'dotted', label: 'Dotted' },
+                ]}
+                onChange={(borderStyle) => setN({ borderStyle })}
+              />
+            </Row>
+          </>
+        )}
+      </Section>
 
       {nodes.length > 0 && (
-        <>
-          <section>
-            <h4>Shape</h4>
-            <div className="shape-grid">
-              {SHAPES.map((s) => (
-                <button key={s} className={same(nodes, 'shape') === s ? 'on' : ''} title={SHAPE_LABELS[s]} onClick={() => setN({ shape: s })}>
-                  <ShapeIcon shape={s} />
-                </button>
-              ))}
-            </div>
-          </section>
-          <section>
-            <h4>Fill</h4>
-            <Seg<FillStyle>
-              value={same(nodes, 'fill')}
-              options={[['solid', 'Solid'], ['soft', 'Soft'], ['outline', 'Outline']]}
-              onChange={(fill) => setN({ fill })}
-            />
-          </section>
-          <section>
-            <h4>
-              Text <span className="val">{fontDisplay ?? '–'}px</span>
-            </h4>
-            <div className="row">
-              <input
-                type="range"
-                min={12}
-                max={32}
-                value={fontDisplay ?? 14}
-                onChange={(e) => setN({ fontSize: storedFontSize(+e.target.value, legacy) })}
-              />
-              <button className={`chip ${same(nodes, 'bold') ? 'on' : ''}`} onClick={() => setN({ bold: !same(nodes, 'bold') })}>
-                <b>B</b>
-              </button>
-            </div>
-          </section>
-          <section>
-            <h4>
-              Border <span className="val">{borderDisplay ?? '–'}px</span>
-            </h4>
-            <input
-              type="range"
-              min={0}
-              max={3}
-              step={0.5}
-              value={borderDisplay ?? 1}
-              onChange={(e) => setN({ borderWidth: storedBorderWidth(+e.target.value, legacy) })}
-            />
-            <Seg<LineStyle>
-              value={same(nodes, 'borderStyle')}
-              options={[['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']]}
-              onChange={(borderStyle) => setN({ borderStyle })}
-            />
-          </section>
-        </>
+        <Section title="Text">
+          <Row label="Size">
+            <Stepper ariaLabel="Font size" min={MIN_FONT} max={MAX_FONT} value={fontDisplay ?? 14} onChange={(v) => setN({ fontSize: storedFontSize(v, legacy) })} />
+          </Row>
+          <Row label="Weight">
+            <Toggle label="Bold" checked={!!same(nodes, 'bold')} onChange={(bold) => setN({ bold })} />
+          </Row>
+        </Section>
       )}
 
       {edges.length > 0 && (
-        <section>
-          <h4>
-            Branch <span className="val">{edgeDisplay ?? '–'}px</span>
-          </h4>
-          <input
-            type="range"
-            min={1}
-            max={4}
-            step={0.5}
-            value={edgeDisplay ?? 1.5}
-            onChange={(e) => setE({ width: storedEdgeWidth(+e.target.value, legacy) })}
-          />
-          <Seg<CurveStyle>
-            value={same(edges, 'curve') === 'organic' ? 'bezier' : same(edges, 'curve')}
-            options={[['bezier', 'Curved'], ['straight', 'Straight'], ['step', 'Elbow']]}
-            onChange={(curve) => setE({ curve })}
-          />
-          <Seg<LineStyle>
-            value={same(edges, 'style')}
-            options={[['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']]}
-            onChange={(style) => setE({ style })}
-          />
-          <label className="check">
-            <input type="checkbox" checked={!!same(edges, 'arrow')} onChange={(e) => setE({ arrow: e.target.checked })} /> Arrow head
-          </label>
-        </section>
+        <Section title="Branch">
+          <Row label="Width">
+            <Slider ariaLabel="Branch width" min={1} max={4} step={0.5} value={edgeDisplay ?? 1.5} unit="px" onChange={(v) => setE({ width: storedEdgeWidth(v, legacy) })} />
+          </Row>
+          <Row label="Curve">
+            <Segmented<Exclude<CurveStyle, 'organic'>>
+              ariaLabel="Curve"
+              value={curve === 'organic' ? 'bezier' : curve}
+              options={[
+                { value: 'bezier', label: 'Curved' },
+                { value: 'straight', label: 'Straight' },
+                { value: 'step', label: 'Elbow' },
+              ]}
+              onChange={(c) => setE({ curve: c })}
+            />
+          </Row>
+          <Row label="Line">
+            <Segmented<LineStyle>
+              ariaLabel="Line style"
+              value={same(edges, 'style')}
+              options={[
+                { value: 'solid', label: 'Solid' },
+                { value: 'dashed', label: 'Dashed' },
+                { value: 'dotted', label: 'Dotted' },
+              ]}
+              onChange={(style) => setE({ style })}
+            />
+          </Row>
+          <Row label="Arrow">
+            <Toggle label="Arrow head" checked={!!same(edges, 'arrow')} onChange={(arrow) => setE({ arrow })} />
+          </Row>
+        </Section>
       )}
     </aside>
   );

@@ -7,6 +7,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/ui.css';
 import './styles/editor.css';
+import './styles/chrome.css';
 import './index.css';
 
 applyTheme();

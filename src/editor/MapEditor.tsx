@@ -14,14 +14,13 @@ import {
   type NodePositionChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
-import type { AppUser, CurveStyle, Graph, LineStyle, MapComment, MapEdge, MapNode, Shape } from '../lib/types';
+import type { AppUser, Graph, MapComment, MapEdge, MapNode } from '../lib/types';
 import { BRANCH_COLORS } from '../lib/palette';
 import { EditorContext, type EditorActions } from './EditorContext';
 import { useUIStore } from './uiStore';
 import { IdeaNode } from './IdeaNode';
 import { CommentNode } from './CommentNode';
 import { BranchEdge, ThoughtEdge } from './Edges';
-import { ColorWheel, RadialMenu, type RadialItem } from './RadialMenu';
 import { DotGrid } from './DotGrid';
 import { Guides } from './Guides';
 import { SproutToolbar } from './SproutToolbar';
@@ -30,8 +29,16 @@ import { snapRect } from './snap';
 import { isLegacy } from './compat';
 import { toast } from '../components/Toast';
 import { MiniMap } from './MiniMap';
-import { Icon, ShapeIcon } from './icons';
-import { SHAPE_LABELS, type Pt } from './geometry';
+import type { Pt } from './geometry';
+import { Toolbar } from './Toolbar';
+import { ShortcutsDialog } from './ShortcutsDialog';
+import { CommandPalette, type Command } from './CommandPalette';
+import { EmptyStateHint, OnboardingTip } from './Onboarding';
+import { commentMenu, edgeMenu, nodeMenu, paneMenu, type MenuApi } from './menus';
+import { ContextMenu, type MenuItem } from '../components/ui';
+import { CircleHelp, Copy, Hand, ListTree, Maximize, MessageSquare, MousePointer2, Pencil, Plus, Redo2, Share2, Trash2, Undo2, ZoomIn, ZoomOut, Map as MapIcon, Sun, Moon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { getThemePref, setThemePref } from '../lib/theme';
 import { tidy } from './layout';
 import { estimateSize, fitViewport, nodeRect, TWEEN_MS, MIN_ZOOM, MAX_ZOOM, easeOut, zoomTo } from './viewport';
 import {
@@ -45,12 +52,9 @@ import {
   duplicate,
   navigate,
   pasteItems,
-  incomingEdgeIds,
   isMine,
   moveItems,
-  recolor,
   removeItems,
-  setEdgeProps,
   setNodeProps,
   subtree,
   updateComment,
@@ -64,10 +68,7 @@ const multiSelectKeys = ['Meta', 'Control', 'Shift'];
 
 const Inspector = lazy(() => import('./Inspector').then((m) => ({ default: m.Inspector })));
 
-type Menu =
-  | { kind: 'node' | 'edge' | 'comment'; id: string; x: number; y: number }
-  | { kind: 'pane'; x: number; y: number; fx: number; fy: number }
-  | { kind: 'shape' | 'line'; ids: string[]; x: number; y: number };
+type Menu = { items: MenuItem[]; x: number; y: number };
 
 interface Props {
   graph: Graph;
@@ -75,9 +76,13 @@ interface Props {
   snapshot(): void;
   undo(): void;
   redo(): void;
+  canUndo: boolean;
+  canRedo: boolean;
   canEdit: boolean;
   canComment: boolean;
   user: AppUser | null;
+  onShare?(): void;
+  onRenameTitle?(): void;
 }
 
 // ------------------------------------------------------------ graph → React Flow (with structural reuse)
@@ -104,6 +109,8 @@ function ideaData(n: MapNode, legacy: boolean): IdeaData {
 
 interface SyncOpts {
   canEdit: boolean;
+  /** Ideas are draggable only with the select tool. */
+  draggable: boolean;
   canComment: boolean;
   user: AppUser | null;
   openCommentId: string | null;
@@ -120,7 +127,7 @@ function syncNodes(prev: Node[], graph: Graph, o: SyncOpts): Node[] {
     const data = ideaData(n, legacy);
     const zIndex = n.root ? 3 : 2;
     const selected = o.pendingSelect ? n.id === o.pendingSelect : !!p?.selected;
-    if (p && p.data === data && p.position.x === n.x && p.position.y === n.y && p.draggable === o.canEdit && p.zIndex === zIndex && p.selected === selected) {
+    if (p && p.data === data && p.position.x === n.x && p.position.y === n.y && p.draggable === o.draggable && p.zIndex === zIndex && p.selected === selected) {
       out.push(p);
       continue;
     }
@@ -132,7 +139,7 @@ function syncNodes(prev: Node[], graph: Graph, o: SyncOpts): Node[] {
       type: 'idea',
       position: { x: n.x, y: n.y },
       data,
-      draggable: o.canEdit,
+      draggable: o.draggable,
       zIndex,
       selected,
       initialWidth: p?.measured?.width ?? est.w,
@@ -143,7 +150,7 @@ function syncNodes(prev: Node[], graph: Graph, o: SyncOpts): Node[] {
     const p = old.get(c.id);
     let data = commentDataCache.get(c);
     if (!data) commentDataCache.set(c, (data = { comment: c }));
-    const draggable = o.canEdit || (o.canComment && isMine(c, o.user));
+    const draggable = o.draggable || (o.canComment && isMine(c, o.user));
     const zIndex = o.openCommentId === c.id ? 1000 : 500;
     const selected = o.pendingSelect ? false : !!p?.selected;
     if (p && p.data === data && p.position.x === c.x && p.position.y === c.y && p.draggable === draggable && p.zIndex === zIndex && p.selected === selected) {
@@ -218,16 +225,19 @@ function readClip(): Clip | null {
   }
 }
 
-function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canComment, user }: Props) {
+function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, canEdit, canComment, user, onShare, onRenameTitle }: Props) {
   perfCount('MapEditor');
   const rf = useReactFlow();
   const storeApi = useStoreApi();
+  const nav = useNavigate();
   const [rfNodes, setRfNodes] = useState<Node[]>([]);
   const [rfEdges, setRfEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<Menu | null>(null);
-  const [wheel, setWheel] = useState<{ ids: string[]; x: number; y: number } | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const openCommentId = useUIStore((s) => s.openCommentId);
+  const tool = useUIStore((s) => s.tool);
   const ui = useUIStore.getState;
 
   const pendingSelect = useRef<string | null>(null);
@@ -250,11 +260,11 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
 
   // Keep React Flow's arrays in sync with the document, reusing node objects that didn't change.
   useEffect(() => {
-    const o: SyncOpts = { canEdit, canComment, user, openCommentId, pendingSelect: pendingSelect.current };
+    const o: SyncOpts = { canEdit, draggable: canEdit && tool === 'select', canComment, user, openCommentId, pendingSelect: pendingSelect.current };
     setRfNodes((prev) => syncNodes(prev, graph, o));
     setRfEdges((prev) => syncEdges(prev, graph, canEdit, o.pendingSelect));
     if (o.pendingSelect && graph.nodes[o.pendingSelect]) pendingSelect.current = null;
-  }, [graph, canEdit, canComment, user, openCommentId]);
+  }, [graph, canEdit, canComment, user, openCommentId, tool]);
 
   // Fit once, as soon as there is something to fit. Sizes are estimated until nodes are measured.
   const fitted = useRef(false);
@@ -498,6 +508,16 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
 
   const pointer = useRef<Pt | null>(null);
 
+  const newIdea = useCallback(() => {
+    const { width, height } = storeApi.getState();
+    const c = rf.screenToFlowPosition({ x: width / 2, y: height / 2 + 48 });
+    createAndEdit((g) =>
+      selectedNodeIds.length === 1
+        ? addChild(g, selectedNodeIds[0], size)
+        : addFreeNode(g, { x: c.x + (Math.random() - 0.5) * 80, y: c.y + (Math.random() - 0.5) * 80 }, BRANCH_COLORS[Object.keys(g.nodes).length % BRANCH_COLORS.length]),
+    );
+  }, [createAndEdit, rf, selectedNodeIds, size, storeApi]);
+
   const copySelection = useCallback(() => {
     if (!selectedNodeIds.length) return;
     const clip = clipboardFor(graphRef.current, selectedNodeIds);
@@ -525,8 +545,8 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
   }, [commit, selectMany]);
 
   // Latest closures for the stable action object and the single keyboard listener.
-  const latest = useRef({ createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf, fit, copySelection, pasteClipboard });
-  latest.current = { createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf, fit, copySelection, pasteClipboard };
+  const latest = useRef({ createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf, fit, copySelection, pasteClipboard, newIdea, commentOnSelection, runTidy });
+  latest.current = { createAndEdit, commit, size, selectOnly, selectMany, deleteSelection, undo, redo, canEdit, canComment, selectedNodeIds, selectedCommentIds, rf, fit, copySelection, pasteClipboard, newIdea, commentOnSelection, runTidy };
 
   const doSprout = useCallback((from: string, dir: Dir, upX: number, upY: number, moved: boolean) => {
     const L = latest.current;
@@ -594,9 +614,8 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
   );
 
   // ------------------------------------------------------------ keyboard (registered once)
-  const menuOpen = !!menu || !!wheel;
-  const menuOpenRef = useRef(menuOpen);
-  menuOpenRef.current = menuOpen;
+  const menuOpenRef = useRef(false);
+  menuOpenRef.current = !!menu;
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const L = latest.current;
@@ -605,7 +624,26 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
       const one = L.selectedNodeIds.length === 1 ? L.selectedNodeIds[0] : null;
       const key = e.key.toLowerCase();
       const viewSize = () => ({ width: storeApi.getState().width, height: storeApi.getState().height });
-      if (mod && key === 'z') {
+      if (mod && key === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (e.key === '?' && !mod) {
+        e.preventDefault();
+        setHelpOpen(true);
+      } else if (!mod && !e.altKey && key === 'v') {
+        ui().setTool('select');
+      } else if (!mod && !e.altKey && key === 'h') {
+        ui().setTool('hand');
+      } else if (!mod && !e.altKey && key === 'n' && L.canEdit) {
+        e.preventDefault();
+        L.newIdea();
+      } else if (!mod && !e.altKey && key === 'c' && L.canComment) {
+        e.preventDefault();
+        L.commentOnSelection();
+      } else if (!mod && !e.altKey && key === 't' && L.canEdit) {
+        e.preventDefault();
+        L.runTidy();
+      } else if (mod && key === 'z') {
         e.preventDefault();
         if (L.canEdit || L.canComment) (e.shiftKey ? L.redo : L.undo)();
       } else if (mod && key === 'y') {
@@ -678,117 +716,81 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
     return () => window.removeEventListener('keydown', down);
   }, [ui, storeApi]);
 
-  // ------------------------------------------------------------ menus
-  const openWheel = (ids: string[], x: number, y: number) => setWheel({ ids, x, y });
-
-  const lineItems = (ids: string[]): RadialItem[] => {
-    const edges = ids.map((i) => graph.edges[i]).filter(Boolean) as MapEdge[];
-    const first = edges[0];
-    const setE = (p: Partial<MapEdge>) => commit((g) => setEdgeProps(g, ids, p));
-    const w = (n: number) => (
-      <svg width="26" height="20" viewBox="0 0 26 20"><path d="M3 10h20" stroke="currentColor" strokeWidth={n} strokeLinecap="round" /></svg>
-    );
-    const st = (s: LineStyle) => (
-      <svg width="26" height="20" viewBox="0 0 26 20">
-        <path d="M3 10h20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray={s === 'dashed' ? '6 4' : s === 'dotted' ? '0.5 5' : undefined} />
-      </svg>
-    );
-    const cv = (c: CurveStyle) => (
-      <svg width="26" height="20" viewBox="0 0 26 20">
-        {c === 'organic' ? (
-          <path d="M3 4C13 4 12 16 23 16 L23 17 C11 17 12 6 3 7Z" fill="currentColor" />
-        ) : (
-          <path d={c === 'bezier' ? 'M3 4C13 4 12 16 23 16' : c === 'straight' ? 'M3 4L23 16' : 'M3 4H13V16H23'} stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-        )}
-      </svg>
-    );
-    return [
-      ...([[2, 'Thin'], [4.5, 'Medium'], [8, 'Thick'], [14, 'Chunky']] as const).map(([n, label]) => ({
-        key: 'w' + n, label: `${label} branch`, icon: w(Math.min(n, 9)), active: first?.width === n, onSelect: () => setE({ width: n }),
-      })),
-      ...(['solid', 'dashed', 'dotted'] as LineStyle[]).map((s) => ({
-        key: s, label: s[0].toUpperCase() + s.slice(1), icon: st(s), active: first?.style === s, onSelect: () => setE({ style: s }),
-      })),
-      ...([['organic', 'Organic'], ['bezier', 'Curve'], ['straight', 'Straight'], ['step', 'Elbow']] as [CurveStyle, string][]).map(([c, label]) => ({
-        key: c, label, icon: cv(c), active: first?.curve === c, onSelect: () => setE({ curve: c }),
-      })),
-      { key: 'arrow', label: first?.arrow ? 'Remove arrow' : 'Arrow head', icon: Icon.arrow, active: first?.arrow, onSelect: () => setE({ arrow: !first?.arrow }) },
-    ];
-  };
-
-  const menuItems = (m: Menu): RadialItem[] => {
-    if (m.kind === 'shape') {
-      const cur = graph.nodes[m.ids[0]]?.shape;
-      return (Object.keys(SHAPE_LABELS) as Shape[]).map((s) => ({
-        key: s, label: SHAPE_LABELS[s], icon: <ShapeIcon shape={s} />, active: cur === s,
-        onSelect: () => commit((g) => setNodeProps(g, m.ids, { shape: s })),
-      }));
-    }
-    if (m.kind === 'line') return lineItems(m.ids);
-    if (m.kind === 'node') {
-      const id = m.id;
-      const ids = selectedNodeIds.includes(id) ? selectedNodeIds : [id];
-      const items: RadialItem[] = [];
-      if (canEdit) {
-        items.push(
-          { key: 'child', label: 'Add idea', icon: Icon.plus, onSelect: () => createAndEdit((g) => addChild(g, id, size)) },
-          { key: 'sib', label: 'Add sibling', icon: Icon.sibling, onSelect: () => createAndEdit((g) => addSibling(g, id, size) ?? addChild(g, id, size)) },
-        );
-      }
-      if (canComment) items.push({ key: 'comment', label: 'Comment', icon: Icon.comment, onSelect: () => startComment(id) });
-      if (canEdit) {
-        items.push(
-          { key: 'color', label: 'Colour', icon: null, rainbow: true, onSelect: () => openWheel(ids, m.x, m.y) },
-          { key: 'shape', label: 'Shape', icon: Icon.shape, onSelect: () => setMenu({ kind: 'shape', ids, x: m.x, y: m.y }), stay: true },
-          {
-            key: 'line', label: 'Branch style', icon: Icon.line,
-            onSelect: () => {
-              const e = incomingEdgeIds(graph, ids);
-              if (e.length) setMenu({ kind: 'line', ids: e, x: m.x, y: m.y });
-            },
-            stay: incomingEdgeIds(graph, ids).length > 0,
-          },
-          { key: 'link', label: 'Link to…', icon: Icon.link, onSelect: () => ui().setConnectingFrom(id) },
-          { key: 'dup', label: 'Duplicate', icon: Icon.duplicate, onSelect: () => commit((g) => duplicate(g, ids).graph) },
-          { key: 'del', label: 'Delete', icon: Icon.trash, onSelect: () => commit((g) => removeItems(g, ids)) },
-        );
-      }
-      return items;
-    }
-    if (m.kind === 'edge') {
-      const e = graph.edges[m.id];
-      return [
-        { key: 'color', label: 'Colour', icon: null, rainbow: true, onSelect: () => openWheel([m.id], m.x, m.y) },
-        { key: 'line', label: 'Line style', icon: Icon.line, onSelect: () => setMenu({ kind: 'line', ids: [m.id], x: m.x, y: m.y }), stay: true },
-        { key: 'arrow', label: e?.arrow ? 'Remove arrow' : 'Arrow head', icon: Icon.arrow, onSelect: () => commit((g) => setEdgeProps(g, [m.id], { arrow: !e?.arrow })) },
-        { key: 'del', label: 'Delete', icon: Icon.trash, onSelect: () => commit((g) => removeItems(g, [m.id])) },
-      ];
-    }
-    if (m.kind === 'comment') {
-      const c = graph.comments[m.id];
-      const items: RadialItem[] = [{ key: 'open', label: 'Open thread', icon: Icon.comment, onSelect: () => ui().setOpenCommentId(m.id) }];
-      if (canComment) items.push({ key: 'resolve', label: c?.resolved ? 'Reopen' : 'Resolve', icon: Icon.check, onSelect: () => commit((g) => updateComment(g, m.id, { resolved: !c?.resolved })) });
-      if (canEdit || (c && isMine(c, user))) items.push({ key: 'del', label: 'Delete', icon: Icon.trash, onSelect: () => commit((g) => removeItems(g, [m.id])) });
-      return items;
-    }
-    const pm = m as Extract<Menu, { kind: 'pane' }>;
-    const at = { x: pm.fx, y: pm.fy };
-    const items: RadialItem[] = [];
-    if (canEdit) {
-      items.push({
-        key: 'new', label: 'New idea here', icon: Icon.plus,
-        onSelect: () => createAndEdit((g) => addFreeNode(g, at, BRANCH_COLORS[Object.keys(g.nodes).length % BRANCH_COLORS.length])),
+  // ------------------------------------------------------------ menus (built when opened)
+  const menuApi = (): MenuApi => ({
+    graph: graphRef.current,
+    user,
+    canEdit,
+    canComment,
+    commit,
+    addChild: (id) => createAndEdit((g) => addChild(g, id, size)),
+    addSibling: (id) => createAndEdit((g) => addSibling(g, id, size) ?? addChild(g, id, size)),
+    addFree: (at) => createAndEdit((g) => addFreeNode(g, at, BRANCH_COLORS[Object.keys(g.nodes).length % BRANCH_COLORS.length])),
+    comment: (nodeId, at) => startComment(nodeId, at),
+    link: (id) => ui().setConnectingFrom(id),
+    duplicate: (ids) => {
+      let out: string[] = [];
+      commit((g) => {
+        const r = duplicate(g, ids);
+        out = r.ids;
+        return r.graph;
       });
+      setTimeout(() => selectMany(out), 0);
+    },
+    remove: (ids) => commit((g) => removeItems(g, ids)),
+    paste: (at) => {
+      pointer.current = at;
+      pasteClipboard();
+    },
+    canPaste: !!readClip()?.nodes.length,
+    tidy: runTidy,
+    fit,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    openComment: (id) => ui().setOpenCommentId(id),
+  });
+
+  const commands = useMemo<Command[]>(() => {
+    const dark = getThemePref() === 'dark';
+    const list: Command[] = [];
+    if (canEdit) {
+      list.push(
+        { id: 'idea', group: 'Ideas', label: 'New idea', icon: <Plus />, shortcut: 'N', run: () => latest.current.newIdea() },
+        { id: 'dup', group: 'Ideas', label: 'Duplicate selection', icon: <Copy />, shortcut: 'Mod+D', disabled: !selectedNodeIds.length, run: () => menuApi().duplicate(latest.current.selectedNodeIds) },
+        { id: 'del', group: 'Ideas', label: 'Delete selection', icon: <Trash2 />, shortcut: 'Delete', disabled: !selectedNodeIds.length && !selectedEdgeIds.length, run: () => latest.current.deleteSelection() },
+        { id: 'tidy', group: 'View', label: 'Tidy layout', icon: <ListTree />, shortcut: 'T', run: () => latest.current.runTidy() },
+      );
     }
-    if (canComment) items.push({ key: 'comment', label: 'Comment here', icon: Icon.comment, onSelect: () => startComment(null, { x: at.x - 90, y: at.y - 40 }) });
-    if (canEdit) items.push({ key: 'tidy', label: 'Tidy layout', icon: Icon.tidy, onSelect: runTidy });
-    items.push({ key: 'fit', label: 'Fit to screen', icon: Icon.fit, onSelect: fit });
-    if (canEdit || canComment) {
-      items.push({ key: 'undo', label: 'Undo', icon: Icon.undo, onSelect: undo, stay: true });
-      items.push({ key: 'redo', label: 'Redo', icon: Icon.redo, onSelect: redo, stay: true });
-    }
-    return items;
-  };
+    if (canComment) list.push({ id: 'comment', group: 'Ideas', label: 'Comment on selection', icon: <MessageSquare />, shortcut: 'C', run: () => latest.current.commentOnSelection() });
+    list.push(
+      { id: 'fit', group: 'View', label: 'Fit to screen', icon: <Maximize />, shortcut: 'Shift+1', run: () => latest.current.fit() },
+      { id: 'zin', group: 'View', label: 'Zoom in', icon: <ZoomIn />, shortcut: 'Mod+=', run: () => zoomTo(rf, rf.getViewport().zoom * 1.2, { width: storeApi.getState().width, height: storeApi.getState().height }) },
+      { id: 'zout', group: 'View', label: 'Zoom out', icon: <ZoomOut />, shortcut: 'Mod+-', run: () => zoomTo(rf, rf.getViewport().zoom / 1.2, { width: storeApi.getState().width, height: storeApi.getState().height }) },
+      { id: 'select', group: 'Tools', label: 'Select tool', icon: <MousePointer2 />, shortcut: 'V', run: () => ui().setTool('select') },
+      { id: 'hand', group: 'Tools', label: 'Hand tool', icon: <Hand />, shortcut: 'H', run: () => ui().setTool('hand') },
+    );
+    if (canEdit || canComment)
+      list.push(
+        { id: 'undo', group: 'History', label: 'Undo', icon: <Undo2 />, shortcut: 'Mod+Z', disabled: !canUndo, run: undo },
+        { id: 'redo', group: 'History', label: 'Redo', icon: <Redo2 />, shortcut: 'Mod+Shift+Z', disabled: !canRedo, run: redo },
+      );
+    if (onShare) list.push({ id: 'share', group: 'Map', label: 'Share map', icon: <Share2 />, run: onShare });
+    if (onRenameTitle && canEdit) list.push({ id: 'rename', group: 'Map', label: 'Rename map', icon: <Pencil />, run: onRenameTitle });
+    list.push(
+      { id: 'maps', group: 'Map', label: 'Go to My maps', icon: <MapIcon />, run: () => nav('/app') },
+      { id: 'theme', group: 'Appearance', label: dark ? 'Switch to light theme' : 'Switch to dark theme', icon: dark ? <Sun /> : <Moon />, run: () => setThemePref(dark ? 'light' : 'dark') },
+      { id: 'help', group: 'Help', label: 'Keyboard shortcuts', icon: <CircleHelp />, shortcut: '?', run: () => setHelpOpen(true) },
+    );
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, canComment, canUndo, canRedo, selectedNodeIds.length, selectedEdgeIds.length, onShare, onRenameTitle, paletteOpen]);
+
+  const rootOnly = useMemo(() => {
+    const ids = Object.keys(graph.nodes);
+    return ids.length === 1 && Object.keys(graph.comments).length === 0 ? ids[0] : null;
+  }, [graph]);
 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const selKey = selection.key;
@@ -798,6 +800,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
 
   return (
     <EditorContext.Provider value={actions}>
+      <div className="editor-body">
       <CanvasFrame>
         <ReactFlow
           nodes={rfNodes}
@@ -843,32 +846,39 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
           }}
           onNodeContextMenu={(e, node) => {
             e.preventDefault();
-            if (node.type === 'comment') return setMenu({ kind: 'comment', id: node.id, x: e.clientX, y: e.clientY });
+            if (node.type === 'comment') return setMenu({ items: commentMenu(menuApi(), node.id), x: e.clientX, y: e.clientY });
             if (!canComment) return;
+            const ids = node.selected && selectedNodeIds.includes(node.id) ? selectedNodeIds : [node.id];
             if (!node.selected) selectOnly(node.id);
-            setMenu({ kind: 'node', id: node.id, x: e.clientX, y: e.clientY });
+            setMenu({ items: nodeMenu(menuApi(), ids), x: e.clientX, y: e.clientY });
           }}
           onEdgeContextMenu={(e, edge) => {
             e.preventDefault();
             if (!canEdit || edge.type !== 'branch') return;
-            setMenu({ kind: 'edge', id: edge.id, x: e.clientX, y: e.clientY });
+            setMenu({ items: edgeMenu(menuApi(), edge.id), x: e.clientX, y: e.clientY });
           }}
           onPaneContextMenu={(e) => {
             e.preventDefault();
             const p = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-            setMenu({ kind: 'pane', x: e.clientX, y: e.clientY, fx: p.x, fy: p.y });
+            setMenu({ items: paneMenu(menuApi(), p), x: e.clientX, y: e.clientY });
+          }}
+          onSelectionContextMenu={(e) => {
+            e.preventDefault();
+            if (!canComment || !selectedNodeIds.length) return;
+            setMenu({ items: nodeMenu(menuApi(), selectedNodeIds), x: e.clientX, y: e.clientY });
           }}
           onlyRenderVisibleElements
           deleteKeyCode={null}
-          selectionOnDrag
+          selectionOnDrag={tool === 'select'}
           selectionMode={SelectionMode.Partial}
-          panOnDrag={[1]}
+          panOnDrag={tool === 'hand' ? true : [1]}
           panActivationKeyCode="Space"
           selectionKeyCode={null}
+          elementsSelectable={tool === 'select'}
+          className={tool === 'hand' ? 'tool-hand' : undefined}
           multiSelectionKeyCode={multiSelectKeys}
           zoomOnDoubleClick={false}
           nodesConnectable={false}
-          elementsSelectable
           minZoom={MIN_ZOOM}
           maxZoom={MAX_ZOOM}
           disableKeyboardA11y
@@ -878,6 +888,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
         >
           <DotGrid />
           <SproutToolbar selectedId={selectedNodeIds.length === 1 ? selectedNodeIds[0] : null} />
+          {rootOnly && canEdit && <EmptyStateHint rootId={rootOnly} />}
         </ReactFlow>
         <Guides />
 
@@ -889,68 +900,22 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canEdit, canCommen
           </div>
         )}
 
-        <div className="dock">
-          {canEdit && (
-            <button
-              className="dock-btn"
-              title="New idea (or double-click the canvas)"
-              onClick={() => {
-                const c = rf.screenToFlowPosition({ x: innerWidth / 2, y: innerHeight / 2 });
-                createAndEdit((g) =>
-                  selectedNodeIds.length === 1
-                    ? addChild(g, selectedNodeIds[0], size)
-                    : addFreeNode(g, { x: c.x + (Math.random() - 0.5) * 80, y: c.y + (Math.random() - 0.5) * 80 }, BRANCH_COLORS[Object.keys(g.nodes).length % BRANCH_COLORS.length]),
-                );
-              }}
-            >
-              {Icon.plus}
-              <span>Idea</span>
-            </button>
-          )}
-          {canComment && (
-            <button className="dock-btn" title="Comment on the selected idea" onClick={commentOnSelection}>
-              {Icon.comment}
-              <span>Comment</span>
-            </button>
-          )}
-          {canEdit && (
-            <button className="dock-btn" title="Tidy layout" onClick={runTidy}>
-              {Icon.tidy}
-              <span>Tidy</span>
-            </button>
-          )}
-        </div>
+        <Toolbar canEdit={canEdit} canComment={canComment} onIdea={newIdea} onComment={commentOnSelection} onTidy={runTidy} onHelp={() => setHelpOpen(true)} />
+        <OnboardingTip canEdit={canEdit} />
 
-        <HintLine canEdit={canEdit} canComment={canComment} />
-
-        {canEdit && inspectorOpen && hasSelection && (
-          <InspectorGate>
-            <Suspense fallback={null}>
-              <Inspector graph={graph} nodeIds={selectedNodeIds} edgeIds={selectedEdgeIds} commit={commit} onClose={closeInspector} />
-            </Suspense>
-          </InspectorGate>
-        )}
         <SproutGhost graph={graph} />
-        {menu && (
-          <RadialMenu
-            key={menu.kind + ('id' in menu ? menu.id : '')}
-            x={menu.x}
-            y={menu.y}
-            items={menuItems(menu)}
-            title={menu.kind === 'shape' ? 'Shape' : menu.kind === 'line' ? 'Branch' : ''}
-            onClose={() => setMenu(null)}
-          />
-        )}
-        {wheel && (
-          <ColorWheel
-            x={wheel.x}
-            y={wheel.y}
-            value={graph.nodes[wheel.ids[0]]?.color ?? graph.edges[wheel.ids[0]]?.color}
-            onPick={(c) => commit((g) => recolor(g, wheel.ids, c))}
-            onClose={() => setWheel(null)}
-          />
-        )}
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+        <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={commands} />
       </CanvasFrame>
+      {canEdit && inspectorOpen && hasSelection && (
+        <InspectorGate>
+          <Suspense fallback={null}>
+            <Inspector graph={graph} nodeIds={selectedNodeIds} edgeIds={selectedEdgeIds} commit={commit} onClose={closeInspector} />
+          </Suspense>
+        </InspectorGate>
+      )}
+      </div>
     </EditorContext.Provider>
   );
 }
@@ -965,21 +930,6 @@ function CanvasFrame({ children }: { children: React.ReactNode }) {
 function InspectorGate({ children }: { children: React.ReactNode }) {
   const editing = useUIStore((s) => s.editingId !== null);
   return editing ? null : <>{children}</>;
-}
-
-function HintLine({ canEdit, canComment }: { canEdit: boolean; canComment: boolean }) {
-  const connecting = useUIStore((s) => s.connectingFrom !== null);
-  return (
-    <div className="hint">
-      {connecting
-        ? 'Click another idea to link it · Esc to cancel'
-        : canEdit
-          ? 'Right-click for the wheel · hover an idea and drag its + · double-click to edit · Tab child · Enter sibling'
-          : canComment
-            ? 'You can comment: right-click an idea, or use the Comment button'
-            : 'View only'}
-    </div>
-  );
 }
 
 /** Dashed line from an idea to the pointer while a + is being dragged. */

@@ -1,28 +1,26 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useAuth } from '../lib/auth';
 import { accessFor } from '../lib/store';
 import { useMapDoc } from '../editor/useMapDoc';
 import { MapEditor } from '../editor/MapEditor';
-import { Icon } from '../editor/icons';
 import { Logo } from '../components/Logo';
-import { AccountMenu } from '../components/AccountMenu';
+import { EditorTopBar } from '../editor/EditorTopBar';
 import { EditorSkeleton } from '../components/Skeleton';
 import { toast } from '../components/Toast';
 
 const ShareDialog = lazy(() => import('../components/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
-const ROLE_BADGE = { owner: 'Owner', edit: 'Editor', comment: 'Commenter', view: 'Viewer', none: '' } as const;
-
 export default function EditorPage() {
   const { id = '' } = useParams();
   const { user, loading, getIdToken, ensureUser } = useAuth();
-  const nav = useNavigate();
   const api = useMapDoc(id);
   const [sharing, setSharing] = useState(false);
-  const [title, setTitle] = useState('');
+  const [renameSignal, setRenameSignal] = useState(0);
   const [guestError, setGuestError] = useState('');
+  const openShare = useCallback(() => setSharing(true), []);
+  const focusTitle = useCallback(() => setRenameSignal((n) => n + 1), []);
 
   // Visitors who open a comment/edit link get a guest identity automatically, no sign-up needed.
   const linkRole = api.meta?.linkRole;
@@ -32,10 +30,6 @@ export default function EditorPage() {
       ? 'Guest access isn’t switched on yet (Firebase → Authentication → Sign-in method → Anonymous).'
       : (e as Error).message));
   }, [loading, user, linkRole]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (api.meta) setTitle(api.meta.title);
-  }, [api.meta?.title]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (api.meta) document.title = `${api.meta.title} · Symaptic`;
@@ -70,45 +64,26 @@ export default function EditorPage() {
 
   return (
     <div className="editor-page">
-      <header className="topbar">
-        <button className="btn btn-ghost btn-icon" title="My maps" onClick={() => nav(user ? '/app' : '/')}>{Icon.back}</button>
-        <Logo small />
-        <input
-          className="title-input"
-          value={title}
-          disabled={!canEdit}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => {
-            const t = title.trim();
-            if (!t || t === api.meta!.title) return setTitle(api.meta!.title);
-            api.updateMeta({ title: t }).catch(() => {
-              setTitle(api.meta!.title);
-              toast.error('Couldn’t rename the map');
-            });
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-        <span className={`save-state ${api.save}`} role="status">
-          <span className={`save-dot ${api.save}`} />
-          {api.save === 'saved' ? 'Saved' : api.save === 'saving' ? 'Saving…' : api.save === 'offline' ? 'Offline' : <button className="save-retry" onClick={api.retrySave}>Couldn’t save · Retry</button>}
-        </span>
-        <div className="spacer" />
-        {(canEdit || canComment) && (
-          <>
-            <button className="btn btn-ghost btn-icon" title="Undo (⌘Z)" disabled={!api.canUndo} onClick={api.undo}>{Icon.undo}</button>
-            <button className="btn btn-ghost btn-icon" title="Redo (⇧⌘Z)" disabled={!api.canRedo} onClick={api.redo}>{Icon.redo}</button>
-          </>
-        )}
-        {access !== 'owner' && access !== 'none' && <span className="badge">{ROLE_BADGE[access]}</span>}
-        {guestError && <span className="note err slim">{guestError}</span>}
-        {!user && api.meta.linkRole === 'view' && <Link className="btn btn-ghost" to={`/login?next=/d/${id}`}>Sign in</Link>}
-        {access === 'owner' && user && (
-          <button className="btn btn-primary" onClick={() => setSharing(true)}>
-            {Icon.share} Share
-          </button>
-        )}
-        <AccountMenu />
-      </header>
+      <EditorTopBar
+        doc={api.meta}
+        user={user}
+        access={access}
+        save={api.save}
+        canUndo={api.canUndo}
+        canRedo={api.canRedo}
+        onUndo={api.undo}
+        onRedo={api.redo}
+        onRetry={api.retrySave}
+        onRename={(t) =>
+          api.updateMeta({ title: t }).catch((e: Error) => {
+            toast.error('Couldn’t rename the map', { description: e.message });
+            throw e;
+          })
+        }
+        onShare={openShare}
+        renameSignal={renameSignal}
+        guestError={guestError}
+      />
 
       <ReactFlowProvider>
         <MapEditor
@@ -117,9 +92,13 @@ export default function EditorPage() {
           snapshot={api.snapshot}
           undo={api.undo}
           redo={api.redo}
+          canUndo={api.canUndo}
+          canRedo={api.canRedo}
           canEdit={canEdit}
           canComment={canComment && !!user}
           user={user}
+          onShare={access === 'owner' && user ? openShare : undefined}
+          onRenameTitle={canEdit ? focusTitle : undefined}
         />
       </ReactFlowProvider>
 

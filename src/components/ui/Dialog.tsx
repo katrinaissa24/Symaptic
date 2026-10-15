@@ -18,6 +18,7 @@ export function Dialog({
   width,
   hideTitle,
   sheet = true,
+  className = '',
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -28,13 +29,14 @@ export function Dialog({
   width?: number;
   hideTitle?: boolean;
   sheet?: boolean;
+  className?: string;
 }) {
   useModalLayer(open);
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>
       <RD.Portal>
         <RD.Overlay className="dialog-overlay" />
-        <RD.Content className={`dialog-content${sheet ? ' dialog-sheet' : ''}`} style={width ? ({ ['--dialog-w' as string]: `${width}px` } as React.CSSProperties) : undefined}>
+        <RD.Content className={`dialog-content${sheet ? ' dialog-sheet' : ''} ${className}`.trim()} style={width ? ({ ['--dialog-w' as string]: `${width}px` } as React.CSSProperties) : undefined}>
           <div className="dialog-head">
             <div>
               {hideTitle ? (
