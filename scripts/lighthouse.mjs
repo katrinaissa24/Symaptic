@@ -30,6 +30,7 @@ const config = {
 const flow = await startFlow(page, { config, name: LABEL });
 for (const [name, path] of PAGES) {
   process.stderr.write(`lighthouse ${name}…\n`);
+  await page.bringToFront();
   await flow.navigate(`${URL}${path}`, { name });
 }
 const result = await flow.createFlowResult();
@@ -42,6 +43,8 @@ for (const s of result.steps) {
   const c = s.lhr.categories, a = s.lhr.audits;
   const ms = (k) => `${Math.round(a[k]?.numericValue ?? 0)} ms`;
   lines.push(`| ${s.name} | ${Math.round(c.performance.score * 100)} | ${Math.round(c.accessibility.score * 100)} | ${Math.round(c['best-practices'].score * 100)} | ${ms('first-contentful-paint')} | ${ms('largest-contentful-paint')} | ${ms('total-blocking-time')} | ${(a['cumulative-layout-shift']?.numericValue ?? 0).toFixed(3)} | ${ms('speed-index')} |`);
+  if (s.lhr.runtimeError) lines.push(`|  | runtime error: ${s.lhr.runtimeError.code} ${s.lhr.runtimeError.message.slice(0, 200)} | | | | | | | |`);
+  for (const w of s.lhr.runWarnings ?? []) lines.push(`|  | warning: ${String(w).slice(0, 200)} | | | | | | | |`);
   const fails = Object.values(a).filter((x) => x.score !== null && x.score < 0.9 && x.scoreDisplayMode === 'binary').map((x) => x.id);
   if (fails.length) lines.push(`|  | failing audits: ${fails.join(', ')} | | | | | | | |`);
 }

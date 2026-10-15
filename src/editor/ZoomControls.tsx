@@ -18,7 +18,7 @@ export const ZoomControls = memo(function ZoomControls({ onFit }: { onFit(): voi
         <Minus />
       </IconButton>
       <Tooltip content="Reset to 100%" shortcut="Shift+0" side="top">
-        <button type="button" className="zoom-value" onClick={() => zoomTo(rf, 1, size())} aria-label={`Zoom ${Math.round(zoom * 100)} percent. Reset to 100 percent`}>
+        <button type="button" className="zoom-value" onClick={() => zoomTo(rf, 1, size())} aria-label={`${Math.round(zoom * 100)}% zoom, reset to 100%`}>
           {Math.round(zoom * 100)}%
         </button>
       </Tooltip>

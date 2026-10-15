@@ -57,7 +57,8 @@ svg.lucide.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 
 /* Page transition: short fade on route change. */
 .page-enter { animation: page-in var(--dur-slow) var(--ease-out) both; }
-@keyframes page-in { from { opacity: 0; } }
+/* Starts above zero on purpose: fully transparent first paints do not count as contentful paint and delay LCP. */
+@keyframes page-in { from { opacity: .4; } }
 
 /* Skeletons */
 .skeleton { background: var(--color-surface-3); border-radius: var(--radius-md); position: relative; overflow: hidden; }
