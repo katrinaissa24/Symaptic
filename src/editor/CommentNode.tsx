@@ -6,7 +6,7 @@ import { useEditor } from './EditorContext';
 import { useUIStore } from './uiStore';
 import { uid } from '../lib/store';
 import { isMine } from './ops';
-import { Avatar } from '../components/ui/Avatar';
+import { Avatar, avatarColors, initials } from '../components/ui/Avatar';
 import { relativeTime } from '../lib/time';
 import { perfCount } from '../lib/perf';
 
@@ -65,8 +65,8 @@ function CommentNodeImpl({ id, data, selected }: NodeProps<CommentRFNode>) {
           ed.setOpenCommentId(id);
         }}
       >
-        {c.resolved ? <Check /> : <Avatar name={c.authorName} size="sm" />}
-        {!c.resolved && c.replies.length > 0 && <span className="comment-chip-count">{c.replies.length + 1}</span>}
+        {c.resolved ? <Check /> : <span className="avatar sm comment-chip-avatar" style={avatarColors(c.authorName)} data-initials={initials(c.authorName)} aria-hidden />}
+        {!c.resolved && c.replies.length > 0 && <span className="comment-chip-count" data-count={c.replies.length + 1} aria-hidden />}
         <Handle type="target" position={Position.Left} className="ghost-handle" isConnectable={false} />
       </button>
     );

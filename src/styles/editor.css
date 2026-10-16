@@ -103,6 +103,9 @@
 .comment-chip:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-2); }
 .comment-chip.is-selected { outline: 2px solid var(--color-selection); outline-offset: 2px; }
 .comment-chip-count { padding: 0 6px 0 2px; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--color-text-2); }
+/* Initials and count are generated content so the chip's accessible name is just its label. */
+.comment-chip-avatar::before { content: attr(data-initials); }
+.comment-chip-count::before { content: attr(data-count); }
 .comment-chip.is-resolved { opacity: .7; color: var(--color-success-text); width: 28px; justify-content: center; }
 .comment-chip .lucide { width: 14px; height: 14px; }
 .comment-card {

@@ -2,9 +2,9 @@
 
 | page | performance | accessibility | best practices | FCP | LCP | TBT | CLS | Speed Index |
 |---|---|---|---|---|---|---|---|---|
-| landing | 99 | 100 | 100 | 634 ms | 768 ms | 0 ms | 0.000 | 634 ms |
+| landing | 100 | 100 | 100 | 650 ms | 730 ms | 0 ms | 0.000 | 651 ms |
 |  | failing audits: valid-source-maps | | | | | | | |
-| my-maps | 100 | 100 | 100 | 293 ms | 343 ms | 0 ms | 0.000 | 467 ms |
+| my-maps | 100 | 100 | 100 | 301 ms | 353 ms | 0 ms | 0.000 | 455 ms |
 |  | failing audits: valid-source-maps | | | | | | | |
-| editor-100 | 100 | 100 | 100 | 334 ms | 440 ms | 0 ms | 0.000 | 558 ms |
-|  | failing audits: valid-source-maps, label-content-name-mismatch | | | | | | | |
+| editor-100 | 100 | 100 | 100 | 330 ms | 434 ms | 0 ms | 0.000 | 588 ms |
+|  | failing audits: valid-source-maps | | | | | | | |
