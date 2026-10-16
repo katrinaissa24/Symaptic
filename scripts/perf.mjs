@@ -53,7 +53,6 @@ function traceBuckets(buf) {
   const map = { FunctionCall: 'script', EvaluateScript: 'script', UpdateLayoutTree: 'style', Layout: 'layout', PrePaint: 'paint', Paint: 'paint', RasterTask: 'raster', Commit: 'composite', CompositeLayers: 'composite', UpdateLayer: 'composite' };
   for (const e of events) if (e.ph === 'X' && map[e.name]) B[map[e.name]] += (e.dur ?? 0) / 1000;
   for (const k in B) B[k] = +B[k].toFixed(0);
-  B.cpuPerFrame = B.frames ? +(B.mainThreadMs / B.frames).toFixed(1) : null;
   return B;
 }
 
@@ -65,6 +64,8 @@ async function gesture(page, browser, name, run) {
   await frame(page);
   const r = await page.evaluate(() => { const P = window.__PERF__; P.recording = false; return { wall: performance.now() - P.t0, frames: P.frames.slice(1), renders: P.renders, inputs: P.events.filter((e) => e.name === 'pointermove' || e.name === 'mousemove' || e.name === 'wheel').map((e) => e.duration) }; });
   const trace = traceBuckets(await browser.stopTracing());
+  // Main-thread CPU per animation frame, using the frames the page itself observed.
+  if (trace) trace.cpuPerFrame = r.frames.length ? +(trace.mainThreadMs / r.frames.length).toFixed(1) : null;
   return { name, wallMs: Math.round(r.wall), frames: stats(r.frames), inputLatency: stats(r.inputs), trace, renders: r.renders };
 }
 

@@ -7,6 +7,7 @@ const load = (f) => JSON.parse(readFileSync(`scripts/out/${f}.json`, 'utf8'));
 const A = load(a), B = load(b);
 const lhA = existsSync('scripts/out/lh-baseline.json') ? JSON.parse(readFileSync('scripts/out/lh-baseline.json', 'utf8')) : null;
 const lhB = existsSync('scripts/out/lh-final.json') ? JSON.parse(readFileSync('scripts/out/lh-final.json', 'utf8')) : null;
+const cpu = (g) => (g.trace?.mainThreadMs && g.frames?.n ? (g.trace.mainThreadMs / g.frames.n).toFixed(1) : '–');
 const pct = (x, y) => (x && y ? `${Math.round(((y - x) / x) * 100)}%` : '–');
 const out = [];
 out.push('# Before / after', '', `Before = commit e86d026 (original app) measured with the final harness. After = this branch. Headless Chromium, software rendering, 1440×900. Pointer input at ~250 Hz; frame = requestAnimationFrame delta; the trace columns are total ms of main-thread work during a ~1 s gesture.`, '');
@@ -18,7 +19,7 @@ for (const sa of A.sizes) {
     const key = ga.name.split(' ')[0];
     const gb = sb.gestures.find((g) => g.name.split(' ')[0] === key);
     if (!gb) continue;
-    out.push(`| ${sa.n} | ${gb.name} | ${ga.frames.mean} / ${ga.frames.p95} | **${gb.frames.mean} / ${gb.frames.p95}** | ${ga.frames.over20}% → ${gb.frames.over20}% | ${ga.trace?.cpuPerFrame ?? '–'} → **${gb.trace?.cpuPerFrame ?? '–'}** | ${ga.renders.IdeaNode ?? 0} → ${gb.renders.IdeaNode ?? 0} | ${ga.trace?.paint ?? '–'} → ${gb.trace?.paint ?? '–'} |`);
+    out.push(`| ${sa.n} | ${gb.name} | ${ga.frames.mean} / ${ga.frames.p95} | **${gb.frames.mean} / ${gb.frames.p95}** | ${ga.frames.over20}% → ${gb.frames.over20}% | ${cpu(ga)} → **${cpu(gb)}** | ${ga.renders.IdeaNode ?? 0} → ${gb.renders.IdeaNode ?? 0} | ${ga.trace?.paint ?? '–'} → ${gb.trace?.paint ?? '–'} |`);
   }
 }
 out.push('', '## Typing latency and load', '', '| ideas | typing p95 before → after (ms) | typing mean | first idea painted (ms) | DOM elements | rendered nodes |', '|---|---|---|---|---|---|');
