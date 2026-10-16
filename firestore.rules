@@ -46,6 +46,25 @@ service cloud.firestore {
         || (canEdit() && changed().hasOnly(['title', 'nodes', 'edges', 'comments', 'updatedAt']))
         // Commenters only touch comments.
         || (canComment() && changed().hasOnly(['comments', 'updatedAt']));
+
+      // Presence: one small document per open tab (name, colour, pointer, selection, lastSeen).
+      // Anyone who can read the map can see who is in it; you can only write your own entry.
+      match /presence/{clientId} {
+        function map() { return get(/databases/$(database)/documents/docs/$(docId)).data; }
+        function mapMemberRole() {
+          return (verified() && myEmail() in map().members) ? map().members[myEmail()] : 'none';
+        }
+        function canReadMap() {
+          return (signedIn() && map().ownerId == request.auth.uid) || mapMemberRole() != 'none' || map().get('linkRole', 'none') != 'none';
+        }
+        allow read: if canReadMap();
+        allow create, update: if signedIn() && canReadMap()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['clientId', 'uid', 'name', 'color', 'cursor', 'selection', 'lastSeen'])
+          && request.resource.data.name is string && request.resource.data.name.size() <= 60
+          && request.resource.data.selection.size() <= 50;
+        allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      }
     }
   }
 }

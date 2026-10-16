@@ -10,7 +10,7 @@ const lhB = existsSync('scripts/out/lh-final.json') ? JSON.parse(readFileSync('s
 const pct = (x, y) => (x && y ? `${Math.round(((y - x) / x) * 100)}%` : '–');
 const out = [];
 out.push('# Before / after', '', `Before = commit e86d026 (original app) measured with the final harness. After = this branch. Headless Chromium, software rendering, 1440×900. Pointer input at ~250 Hz; frame = requestAnimationFrame delta; the trace columns are total ms of main-thread work during a ~1 s gesture.`, '');
-out.push('## Frame time while interacting', '', '| ideas | gesture | before mean / p95 (ms) | after mean / p95 (ms) | frames >20 ms before → after | IdeaNode renders before → after | paint ms before → after |', '|---|---|---|---|---|---|---|');
+out.push('## Frame time while interacting', '', '| ideas | gesture | before mean / p95 (ms) | after mean / p95 (ms) | frames >20 ms before → after | main-thread ms per frame before → after | IdeaNode renders before → after | paint ms before → after |', '|---|---|---|---|---|---|---|---|');
 for (const sa of A.sizes) {
   const sb = B.sizes.find((s) => s.n === sa.n);
   if (!sb) continue;
@@ -18,7 +18,7 @@ for (const sa of A.sizes) {
     const key = ga.name.split(' ')[0];
     const gb = sb.gestures.find((g) => g.name.split(' ')[0] === key);
     if (!gb) continue;
-    out.push(`| ${sa.n} | ${gb.name} | ${ga.frames.mean} / ${ga.frames.p95} | **${gb.frames.mean} / ${gb.frames.p95}** | ${ga.frames.over20}% → ${gb.frames.over20}% | ${ga.renders.IdeaNode ?? 0} → ${gb.renders.IdeaNode ?? 0} | ${ga.trace?.paint ?? '–'} → ${gb.trace?.paint ?? '–'} |`);
+    out.push(`| ${sa.n} | ${gb.name} | ${ga.frames.mean} / ${ga.frames.p95} | **${gb.frames.mean} / ${gb.frames.p95}** | ${ga.frames.over20}% → ${gb.frames.over20}% | ${ga.trace?.cpuPerFrame ?? '–'} → **${gb.trace?.cpuPerFrame ?? '–'}** | ${ga.renders.IdeaNode ?? 0} → ${gb.renders.IdeaNode ?? 0} | ${ga.trace?.paint ?? '–'} → ${gb.trace?.paint ?? '–'} |`);
   }
 }
 out.push('', '## Typing latency and load', '', '| ideas | typing p95 before → after (ms) | typing mean | first idea painted (ms) | DOM elements | rendered nodes |', '|---|---|---|---|---|---|');
@@ -52,7 +52,15 @@ if (lhA && lhB) {
     out.push(`| ${sa.name} | ${S(sa, 'performance')} → **${S(sb, 'performance')}** | ${S(sa, 'accessibility')} → **${S(sb, 'accessibility')}** | ${S(sa, 'best-practices')} → **${S(sb, 'best-practices')}** | ${Math.round(sa.audits['largest-contentful-paint'])} → ${Math.round(sb.audits['largest-contentful-paint'])} | ${Math.round(sa.audits['total-blocking-time'])} → ${Math.round(sb.audits['total-blocking-time'])} | ${(sa.audits['cumulative-layout-shift'] ?? 0).toFixed(3)} → ${(sb.audits['cumulative-layout-shift'] ?? 0).toFixed(3)} |`);
   }
 }
+const lhM = existsSync('scripts/out/lh-final-mobile.json') ? JSON.parse(readFileSync('scripts/out/lh-final-mobile.json', 'utf8')) : null;
+if (lhM) {
+  out.push('', '## Lighthouse, mobile preset (Moto G Power, slow 4G, 4× CPU slowdown; after only)', '', '| page | performance | accessibility | best practices | FCP (ms) | LCP (ms) | TBT (ms) | CLS |', '|---|---|---|---|---|---|---|---|');
+  for (const s of lhM) {
+    const S = (k) => Math.round((s.scores[k] ?? 0) * 100);
+    out.push(`| ${s.name} | ${S('performance')} | ${S('accessibility')} | ${S('best-practices')} | ${Math.round(s.audits['first-contentful-paint'])} | ${Math.round(s.audits['largest-contentful-paint'])} | ${Math.round(s.audits['total-blocking-time'])} | ${(s.audits['cumulative-layout-shift'] ?? 0).toFixed(3)} |`);
+  }
+}
 if (existsSync('scripts/out/axe.md')) out.push('', '## axe (WCAG 2.1 AA + best practice)', '', readFileSync('scripts/out/axe.md', 'utf8').trim().split('\n').filter((l) => l.startsWith('## ')).map((l) => '- ' + l.slice(3)).join('\n'));
-out.push('', `Raw data: scripts/out/${a}.json, scripts/out/${b}.json. Change ${pct(1, 1)} columns are relative.`.replace(' Change – columns are relative.', ''));
+out.push('', '## How to read these numbers', '', '- Headless Chromium here has no GPU: raster runs in software (SwiftShader) on worker threads, so the raster column and anything downstream of it is pessimistic. The frame-time and main-thread columns are CPU work and transfer to real machines; a real GPU only makes things better.', '- Desktop Lighthouse ran against the production build on localhost with simulated 10 Mbps / 40 ms network, so network numbers are optimistic; the mobile preset above applies slow 4G and a 4× CPU slowdown and is the stricter view.', `- Raw data: scripts/out/${a}.json, scripts/out/${b}.json, scripts/out/lh-*.json.`);
 writeFileSync('scripts/results/FINAL.md', out.join('\n') + '\n');
 console.log(out.join('\n'));

@@ -24,6 +24,8 @@ import { BranchEdge, ThoughtEdge } from './Edges';
 import { DotGrid } from './DotGrid';
 import { Guides } from './Guides';
 import { SproutToolbar } from './SproutToolbar';
+import { Cursors } from './Cursors';
+import type { PresenceApi } from './usePresence';
 import { ZoomControls } from './ZoomControls';
 import { snapRect } from './snap';
 import { isLegacy } from './compat';
@@ -86,6 +88,7 @@ interface Props {
   user: AppUser | null;
   onShare?(): void;
   onRenameTitle?(): void;
+  presence?: PresenceApi;
 }
 
 // ------------------------------------------------------------ graph → React Flow (with structural reuse)
@@ -228,7 +231,7 @@ function readClip(): Clip | null {
   }
 }
 
-function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, canEdit, canComment, user, onShare, onRenameTitle }: Props) {
+function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, canEdit, canComment, user, onShare, onRenameTitle, presence }: Props) {
   perfCount('MapEditor');
   const rf = useReactFlow();
   const storeApi = useStoreApi();
@@ -798,6 +801,29 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const selKey = selection.key;
   useEffect(() => setInspectorOpen(true), [selKey]);
+
+  // ------------------------------------------------------------ presence
+  const setPresenceSelection = presence?.setSelection;
+  useEffect(() => {
+    setPresenceSelection?.(selectedNodeIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selKey, setPresenceSelection]);
+  const others = presence?.others;
+  useEffect(() => {
+    const m: Record<string, string> = {};
+    for (const o of others ?? []) for (const id of o.selection ?? []) if (!m[id]) m[id] = o.color;
+    ui().setRemoteSelections(m);
+  }, [others, ui]);
+  const setPresenceCursor = presence?.setCursor;
+  const onCanvasPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!setPresenceCursor) return;
+      const p = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      setPresenceCursor({ x: Math.round(p.x), y: Math.round(p.y) });
+    },
+    [rf, setPresenceCursor],
+  );
+  const onCanvasPointerLeave = useCallback(() => setPresenceCursor?.(null), [setPresenceCursor]);
   const closeInspector = useCallback(() => setInspectorOpen(false), []);
   const nodeCount = rfNodes.length;
 
@@ -805,6 +831,8 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
     <EditorContext.Provider value={actions}>
       <main className="editor-body" aria-label="Map canvas">
       <CanvasFrame
+        onPointerMove={onCanvasPointerMove}
+        onPointerLeave={onCanvasPointerLeave}
         onLongPress={(target, x, y) => {
           const nodeEl = target.closest('.react-flow__node');
           const id = nodeEl?.getAttribute('data-id');
@@ -907,6 +935,7 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
           {rootOnly && canEdit && <EmptyStateHint rootId={rootOnly} />}
         </ReactFlow>
         <Guides />
+        {others && others.length > 0 && <Cursors others={others} />}
 
         <ZoomControls onFit={fit} />
 
@@ -937,7 +966,17 @@ function MapEditorImpl({ graph, commit, snapshot, undo, redo, canUndo, canRedo, 
 }
 
 /** Wrapper that owns the "connecting" class so the editor itself doesn't re-render for it. */
-function CanvasFrame({ children, onLongPress }: { children: React.ReactNode; onLongPress?(target: Element, x: number, y: number): void }) {
+function CanvasFrame({
+  children,
+  onLongPress,
+  onPointerMove,
+  onPointerLeave,
+}: {
+  children: React.ReactNode;
+  onLongPress?(target: Element, x: number, y: number): void;
+  onPointerMove?(e: React.PointerEvent): void;
+  onPointerLeave?(): void;
+}) {
   const connecting = useUIStore((s) => s.connectingFrom !== null);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
   const cancel = () => {
@@ -957,7 +996,9 @@ function CanvasFrame({ children, onLongPress }: { children: React.ReactNode; onL
       }}
       onPointerMoveCapture={(e) => {
         if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) cancel();
+        onPointerMove?.(e);
       }}
+      onPointerLeave={onPointerLeave}
       onPointerUpCapture={cancel}
       onPointerCancelCapture={cancel}
     >

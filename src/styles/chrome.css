@@ -27,6 +27,9 @@
 .save-spinner { width: 12px; height: 12px; border-radius: var(--radius-full); border: 2px solid var(--color-border-strong); border-top-color: var(--color-text-3); animation: spin .8s linear infinite; }
 .topbar-group { display: inline-flex; gap: 0; }
 .topbar-people { margin: 0 var(--space-1); }
+.avatar-ring { display: inline-flex; border-radius: var(--radius-full); }
+.avatar-ring .avatar { box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--ring, transparent); margin-left: 0; }
+.topbar-people .avatar-ring + .avatar-ring { margin-left: 4px; }
 @media (max-width: 760px) {
   .crumb-text, .crumb-sep, .topbar-people, .topbar .tag, .save-text, .topbar-share-text { display: none; }
   .save-state.is-error .save-text { display: inline; }

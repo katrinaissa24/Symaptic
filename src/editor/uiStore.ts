@@ -26,6 +26,8 @@ interface UIState {
   sprout: SproutState | null;
   /** Alignment guides shown while dragging. */
   guides: Guide[];
+  /** Ideas selected by other people: node id → palette key. */
+  remoteSelections: Record<string, string>;
   /** How many modal layers (dialogs, menus, palette) are open. Canvas shortcuts pause while > 0. */
   modalDepth: number;
   setEditingId(id: string | null): void;
@@ -36,6 +38,7 @@ interface UIState {
   setDragging(v: boolean): void;
   setSprout(s: SproutState | null): void;
   setGuides(g: Guide[]): void;
+  setRemoteSelections(m: Record<string, string>): void;
   pushModal(): void;
   popModal(): void;
 }
@@ -49,6 +52,7 @@ export const useUIStore = create<UIState>((set) => ({
   dragging: false,
   sprout: null,
   guides: [],
+  remoteSelections: {},
   modalDepth: 0,
   setEditingId: (editingId) => set((s) => (s.editingId === editingId ? s : { editingId })),
   setOpenCommentId: (openCommentId) => set((s) => (s.openCommentId === openCommentId ? s : { openCommentId })),
@@ -57,6 +61,7 @@ export const useUIStore = create<UIState>((set) => ({
   setHoverId: (hoverId) => set((s) => (s.hoverId === hoverId ? s : { hoverId })),
   setDragging: (dragging) => set((s) => (s.dragging === dragging ? s : { dragging })),
   setSprout: (sprout) => set({ sprout }),
+  setRemoteSelections: (remoteSelections) => set({ remoteSelections }),
   setGuides: (guides) => set((s) => (s.guides.length === 0 && guides.length === 0 ? s : { guides })),
   pushModal: () => set((s) => ({ modalDepth: s.modalDepth + 1 })),
   popModal: () => set((s) => ({ modalDepth: Math.max(0, s.modalDepth - 1) })),

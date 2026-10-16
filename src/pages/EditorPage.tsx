@@ -4,6 +4,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { useAuth } from '../lib/auth';
 import { accessFor } from '../lib/store';
 import { useMapDoc } from '../editor/useMapDoc';
+import { usePresence } from '../editor/usePresence';
 import { MapEditor } from '../editor/MapEditor';
 import { Logo } from '../components/Logo';
 import { EditorTopBar } from '../editor/EditorTopBar';
@@ -23,6 +24,7 @@ export default function EditorPage() {
   const [renameSignal, setRenameSignal] = useState(0);
   const [guestError, setGuestError] = useState('');
   const openShare = useCallback(() => setSharing(true), []);
+  const presence = usePresence(id, user, api.status === 'ready');
   const focusTitle = useCallback(() => setRenameSignal((n) => n + 1), []);
 
   // Visitors who open a comment/edit link get a guest identity automatically, no sign-up needed.
@@ -94,6 +96,7 @@ export default function EditorPage() {
         onShare={openShare}
         renameSignal={renameSignal}
         guestError={guestError}
+        others={presence.others}
       />
 
       <ReactFlowProvider>
@@ -110,6 +113,7 @@ export default function EditorPage() {
           user={user}
           onShare={access === 'owner' && user ? openShare : undefined}
           onRenameTitle={canEdit ? focusTitle : undefined}
+          presence={presence}
         />
       </ReactFlowProvider>
 

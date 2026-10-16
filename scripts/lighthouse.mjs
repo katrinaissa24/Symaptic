@@ -17,13 +17,15 @@ const page = await browser.newPage();
 await page.goto(`${URL}/login`, { waitUntil: 'domcontentloaded' });
 await page.evaluate((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); localStorage.setItem('symaptic:onboarded', '1'); }, seedStorage([5, 100]));
 
+const MOBILE = args.preset === 'mobile';
+// Mobile = Lighthouse's default Moto G Power emulation: slow 4G (150 ms RTT, 1.6 Mbps) and a 4× CPU slowdown.
 const config = {
   extends: 'lighthouse:default',
   settings: {
     onlyCategories: ['performance', 'accessibility', 'best-practices'],
-    formFactor: 'desktop',
-    screenEmulation: { mobile: false, width: 1440, height: 900, deviceScaleFactor: 1, disabled: false },
-    throttling: { rttMs: 40, throughputKbps: 10240, cpuSlowdownMultiplier: 1 },
+    formFactor: MOBILE ? 'mobile' : 'desktop',
+    screenEmulation: MOBILE ? { mobile: true, width: 412, height: 823, deviceScaleFactor: 1.75, disabled: false } : { mobile: false, width: 1440, height: 900, deviceScaleFactor: 1, disabled: false },
+    throttling: MOBILE ? { rttMs: 150, throughputKbps: 1638.4, cpuSlowdownMultiplier: 4 } : { rttMs: 40, throughputKbps: 10240, cpuSlowdownMultiplier: 1 },
     throttlingMethod: 'simulate',
   },
 };
@@ -38,7 +40,7 @@ await browser.close();
 
 mkdirSync('scripts/out', { recursive: true });
 writeFileSync(`scripts/out/lh-${LABEL}.json`, JSON.stringify(result.steps.map((s) => ({ name: s.name, scores: Object.fromEntries(Object.entries(s.lhr.categories).map(([k, v]) => [k, v.score])), audits: Object.fromEntries(['first-contentful-paint', 'largest-contentful-paint', 'total-blocking-time', 'cumulative-layout-shift', 'speed-index', 'interactive'].map((a) => [a, s.lhr.audits[a]?.numericValue])) })), null, 2));
-const lines = [`# Lighthouse: ${LABEL}`, '', '| page | performance | accessibility | best practices | FCP | LCP | TBT | CLS | Speed Index |', '|---|---|---|---|---|---|---|---|---|'];
+const lines = [`# Lighthouse: ${LABEL} (${MOBILE ? 'mobile: Moto G Power, slow 4G, 4× CPU' : 'desktop: 10 Mbps, no CPU slowdown'})`, '', '| page | performance | accessibility | best practices | FCP | LCP | TBT | CLS | Speed Index |', '|---|---|---|---|---|---|---|---|---|'];
 for (const s of result.steps) {
   const c = s.lhr.categories, a = s.lhr.audits;
   const ms = (k) => `${Math.round(a[k]?.numericValue ?? 0)} ms`;

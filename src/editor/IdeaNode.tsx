@@ -18,6 +18,7 @@ function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
   const ed = useEditor();
   const editing = useUIStore((s) => s.editingId === id);
   const connectTarget = useUIStore((s) => s.connectingFrom !== null && s.connectingFrom !== id);
+  const remote = useUIStore((s) => s.remoteSelections[id]);
   const shape = displayShape(n.shape);
   const pathShape = SHAPE_PATHS[shape];
 
@@ -25,6 +26,7 @@ function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
     const fs = displayFontSize(n.fontSize, legacy);
     return {
       ['--c' as string]: displayColor(n.color),
+      ['--remote' as string]: remote ? `var(--palette-${remote})` : undefined,
       ['--bw' as string]: `${displayBorderWidth(n.borderWidth, legacy)}px`,
       ['--bs' as string]: n.borderStyle,
       ['--ink-solid' as string]: readableOn(displayHex(n.color)),
@@ -32,7 +34,7 @@ function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
       lineHeight: `${Math.round(fs * 1.4)}px`,
       fontWeight: n.bold || n.root ? 600 : 400,
     };
-  }, [n.color, n.borderWidth, n.borderStyle, n.fontSize, n.bold, n.root, legacy]);
+  }, [n.color, n.borderWidth, n.borderStyle, n.fontSize, n.bold, n.root, legacy, remote]);
 
   const className =
     `idea shape-${shape} fill-${n.fill}` +
@@ -40,6 +42,7 @@ function IdeaNodeImpl({ id, data, selected }: NodeProps<IdeaRFNode>) {
     (selected ? ' is-selected' : '') +
     (connectTarget ? ' connect-target' : '') +
     (n.root ? ' is-root' : '') +
+    (remote ? ' is-remote-selected' : '') +
     (editing ? ' is-editing' : '');
 
   return (

@@ -6,6 +6,10 @@
 //  2. Read the map through the Firestore REST API *as the caller*, so Firestore rules apply,
 //     and check they own it and that each invitee really is a member.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import tokens from './_tokens.json' with { type: 'json' };
+
+// Light-theme colours from src/styles/tokens.css (regenerate with `npm run tokens`).
+const t = (name: string) => (tokens as Record<string, string>)[name];
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || '';
 const JWKS = createRemoteJWKSet(
@@ -21,23 +25,22 @@ const ROLE_TEXT: Record<string, string> = {
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-// Email clients need inline colours; these mirror the light theme tokens in src/styles/tokens.css.
 function emailHtml(o: { inviter: string; title: string; role: string; url: string }) {
-  return `<!doctype html><html><body style="margin:0;background:#fafafa;font-family:Inter,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#18181b">
+  return `<!doctype html><html><body style="margin:0;background:${t('color-bg')};font-family:Inter,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:${t('color-text')}">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px"><tr><td align="center">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e4e4e7;border-radius:12px">
-    <tr><td style="padding:28px 32px 4px;font-size:14px;color:#6b6b74;font-weight:600">Symaptic</td></tr>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:${t('color-surface')};border:1px solid ${t('color-border')};border-radius:12px">
+    <tr><td style="padding:28px 32px 4px;font-size:14px;color:${t('color-text-3')};font-weight:600">Symaptic</td></tr>
     <tr><td style="padding:0 32px;font-size:20px;font-weight:600;line-height:1.3">
       ${esc(o.inviter)} invited you to ${ROLE_TEXT[o.role] ?? 'view'} “${esc(o.title)}”
     </td></tr>
-    <tr><td style="padding:12px 32px 0;font-size:14px;line-height:1.5;color:#52525b">
+    <tr><td style="padding:12px 32px 0;font-size:14px;line-height:1.5;color:${t('color-text-2')}">
       Sign in with this email address (or Google) to open the mind map.
     </td></tr>
     <tr><td style="padding:24px 32px 32px">
-      <a href="${o.url}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:6px;font-size:14px">Open the map</a>
+      <a href="${o.url}" style="display:inline-block;background:${t('color-accent')};color:${t('color-text-on-accent')};text-decoration:none;font-weight:600;padding:10px 18px;border-radius:6px;font-size:14px">Open the map</a>
     </td></tr>
   </table>
-  <p style="font-size:12px;color:#6b6b74">If you weren’t expecting this, you can ignore it.</p>
+  <p style="font-size:12px;color:${t('color-text-3')}">If you weren’t expecting this, you can ignore it.</p>
   </td></tr></table></body></html>`;
 }
 

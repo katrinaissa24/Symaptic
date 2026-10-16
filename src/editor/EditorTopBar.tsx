@@ -5,6 +5,7 @@ import type { AccessRole, AppUser, MapDoc } from '../lib/types';
 import type { SaveState } from './useMapDoc';
 import { Avatar, Button, IconButton, Tooltip } from '../components/ui';
 import { AccountMenu } from '../components/AccountMenu';
+import type { PresenceEntry } from '../lib/presence';
 import { LogoMark } from '../components/Logo';
 
 const ROLE_BADGE: Record<AccessRole, string> = { owner: '', edit: 'Editor', comment: 'Commenter', view: 'Viewer', none: '' };
@@ -40,6 +41,7 @@ export function EditorTopBar({
   onShare,
   renameSignal,
   guestError,
+  others = [],
 }: {
   doc: MapDoc;
   user: AppUser | null;
@@ -55,6 +57,8 @@ export function EditorTopBar({
   /** Increment to focus the title input (used by the command palette). */
   renameSignal?: number;
   guestError?: string;
+  /** People with the map open right now (live presence). */
+  others?: PresenceEntry[];
 }) {
   const canEdit = access === 'owner' || access === 'edit';
   const canAct = canEdit || access === 'comment';
@@ -74,7 +78,8 @@ export function EditorTopBar({
     onRename(t).catch(() => setTitle(doc.title));
   };
 
-  const people = [{ name: doc.ownerName, email: doc.ownerEmail }, ...Object.keys(doc.members ?? {}).map((email) => ({ name: email.split('@')[0], email }))];
+  // One avatar per person, even if they have the map open in several tabs.
+  const viewers = [...new Map(others.map((o) => [o.uid, o])).values()];
 
   return (
     <header className="topbar">
@@ -132,12 +137,16 @@ export function EditorTopBar({
       )}
       {ROLE_BADGE[access] && <span className="tag">{ROLE_BADGE[access]}</span>}
       {guestError && <span className="note err text-xs">{guestError}</span>}
-      {people.length > 1 && (
-        <div className="avatar-stack topbar-people" aria-label={`Shared with ${people.length - 1} ${people.length === 2 ? 'person' : 'people'}`}>
-          {people.slice(0, 4).map((p) => (
-            <Avatar key={p.email} name={p.name} user={{ name: p.name, email: p.email }} size="sm" title={p.email} />
+      {viewers.length > 0 && (
+        <div className="avatar-stack topbar-people" role="list" aria-label={`${viewers.length} ${viewers.length === 1 ? 'person' : 'people'} viewing now`}>
+          {viewers.slice(0, 4).map((v) => (
+            <Tooltip key={v.uid} content={`${v.name} is here`}>
+              <span role="listitem" style={{ ['--ring' as string]: `var(--palette-${v.color})` }} className="avatar-ring">
+                <Avatar name={v.name} user={{ name: v.name, email: v.uid }} size="sm" title={`${v.name} is viewing`} />
+              </span>
+            </Tooltip>
           ))}
-          {people.length > 4 && <span className="avatar sm">+{people.length - 4}</span>}
+          {viewers.length > 4 && <span className="avatar sm">+{viewers.length - 4}</span>}
         </div>
       )}
       {!user && doc.linkRole === 'view' && (

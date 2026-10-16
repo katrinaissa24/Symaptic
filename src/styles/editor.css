@@ -84,6 +84,15 @@
 .sprout:hover { color: var(--color-accent); border-color: var(--color-accent); transform: scale(1.1); }
 @media (pointer: coarse) { .sprout { width: 28px; height: 28px; } }
 
+/* someone else's selection: dashed ring in their colour, under the local ring */
+.is-remote-selected:not(.is-selected) .idea-box { outline: 2px dashed var(--remote); outline-offset: 2px; }
+.react-flow__node.selected .is-remote-selected .idea-box { outline-style: solid; }
+/* live cursors */
+.cursors { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: var(--z-canvas-ui); }
+.cursor { position: absolute; left: 0; top: 0; display: flex; align-items: flex-start; gap: 2px; will-change: transform; transition: transform 120ms linear; }
+.cursor-name { margin-top: 12px; padding: 1px var(--space-2); border-radius: var(--radius-sm); background: var(--c); color: var(--color-text-on-accent); font-size: var(--text-xs); line-height: var(--leading-xs); font-weight: var(--weight-medium); white-space: nowrap; box-shadow: var(--shadow-1); }
+@media (prefers-reduced-motion: reduce) { .cursor { transition: none; } }
+
 /* ---------------------------------------------------------------- branches */
 .branch-line { fill: none; stroke: color-mix(in srgb, var(--c) 70%, var(--color-canvas)); stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--dur) var(--ease-out); }
 .branch-arrow { fill: color-mix(in srgb, var(--c) 70%, var(--color-canvas)); }

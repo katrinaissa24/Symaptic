@@ -37,10 +37,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function traceBuckets(buf) {
   let events = [];
   try { events = JSON.parse(buf.toString()).traceEvents ?? []; } catch { return null; }
-  const B = { script: 0, style: 0, layout: 0, paint: 0, raster: 0, composite: 0 };
+  const B = { script: 0, style: 0, layout: 0, paint: 0, raster: 0, composite: 0, mainThreadMs: 0, frames: 0 };
+  // Main-thread busy time = top-level RunTask durations on the renderer main thread (the thread that
+  // paints). This is CPU work only, so it is comparable to a machine with a real GPU.
+  const mainTid = (() => {
+    const counts = new Map();
+    for (const e of events) if (e.name === 'RunTask' && e.ph === 'X') counts.set(e.tid, (counts.get(e.tid) || 0) + (e.dur || 0));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  })();
+  for (const e of events) {
+    if (e.ph !== 'X' || e.tid !== mainTid) continue;
+    if (e.name === 'RunTask') B.mainThreadMs += (e.dur ?? 0) / 1000;
+    if (e.name === 'FireAnimationFrame') B.frames++;
+  }
   const map = { FunctionCall: 'script', EvaluateScript: 'script', UpdateLayoutTree: 'style', Layout: 'layout', PrePaint: 'paint', Paint: 'paint', RasterTask: 'raster', Commit: 'composite', CompositeLayers: 'composite', UpdateLayer: 'composite' };
   for (const e of events) if (e.ph === 'X' && map[e.name]) B[map[e.name]] += (e.dur ?? 0) / 1000;
   for (const k in B) B[k] = +B[k].toFixed(0);
+  B.cpuPerFrame = B.frames ? +(B.mainThreadMs / B.frames).toFixed(1) : null;
   return B;
 }
 
@@ -180,9 +193,9 @@ async function main() {
 
   mkdirSync('scripts/out', { recursive: true });
   writeFileSync(`scripts/out/${LABEL}.json`, JSON.stringify(out, null, 2));
-  const lines = [`# Perf: ${LABEL} (${out.date})`, '', '| nodes | gesture | frame mean | frame p95 | frame max | frames >20ms | input→paint p95 | script | style | layout | paint | raster | IdeaNode renders |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
-  for (const s of out.sizes) for (const g of s.gestures) lines.push(`| ${s.n} | ${g.name} | ${g.frames.mean} | ${g.frames.p95} | ${g.frames.max} | ${g.frames.over20}% | ${g.inputLatency.n ? g.inputLatency.p95 : '<16'} | ${g.trace?.script ?? '–'} | ${g.trace?.style ?? '–'} | ${g.trace?.layout ?? '–'} | ${g.trace?.paint ?? '–'} | ${g.trace?.raster ?? '–'} | ${g.renders.IdeaNode ?? 0} |`);
-  lines.push('', 'Frame times in ms from requestAnimationFrame deltas; script/style/layout/paint/raster are total ms of trace work during the gesture (~1 s of input).');
+  const lines = [`# Perf: ${LABEL} (${out.date})`, '', '| nodes | gesture | frame mean | frame p95 | frame max | frames >20ms | main-thread ms/frame | script | style | layout | paint | raster | IdeaNode renders |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
+  for (const s of out.sizes) for (const g of s.gestures) lines.push(`| ${s.n} | ${g.name} | ${g.frames.mean} | ${g.frames.p95} | ${g.frames.max} | ${g.frames.over20}% | ${g.trace?.cpuPerFrame ?? '–'} | ${g.trace?.script ?? '–'} | ${g.trace?.style ?? '–'} | ${g.trace?.layout ?? '–'} | ${g.trace?.paint ?? '–'} | ${g.trace?.raster ?? '–'} | ${g.renders.IdeaNode ?? 0} |`);
+  lines.push('', 'Frame times in ms from requestAnimationFrame deltas. "main-thread ms/frame" is CPU work on the renderer main thread per animation frame (GPU-independent; under 16.7 means the main thread leaves headroom). script/style/layout/paint/raster are total ms of trace work during the gesture (~1 s of input); raster runs on worker threads and is software-rendered here.');
   lines.push('', '| nodes | typing mean ms | typing p95 ms | first node ms | DOMContentLoaded ms | DOM elements | rendered nodes |', '|---|---|---|---|---|---|---|');
   for (const s of out.sizes) lines.push(`| ${s.n} | ${s.typing?.mean ?? '–'} | ${s.typing?.p95 ?? '–'} | ${s.firstNodeMs} | ${s.nav.domContentLoaded} | ${s.domCount} | ${s.renderedNodes} |`);
   if (out.bundle) { lines.push('', '| bundle file | kB |', '|---|---|'); for (const b of out.bundle) lines.push(`| ${b.file} | ${b.kb} |`); }

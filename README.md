@@ -64,6 +64,7 @@ To test invite emails locally, run `npx vercel dev` instead of `npm run dev` (it
 | **Link sharing** | Off / view / comment / edit. Viewing needs no account; commenting and editing ask the visitor to sign in. |
 | **Enforcement** | `firestore.rules` enforces roles on the server: editors can't change sharing settings, commenters can only touch comments. Emails are trusted only once verified. |
 | **Invite API** | `api/invite.ts` verifies the caller's Firebase token and re-reads the map *as that user*, so only the owner can trigger emails, and only to people who already have access. No service-account key is needed. |
+| **Presence** | Everyone with a map open appears in the top bar, with their live pointer and selection on the canvas. Each open tab writes one small document under `docs/{id}/presence/` (pointer updates are coalesced to 4 per second, a heartbeat every 20 s; entries older than 45 s are ignored). `firestore.rules` lets anyone who can read the map read presence and lets people write only their own entry. Re-publish the rules after upgrading. In demo mode presence works between tabs of the same browser. |
 
 ## Using the editor
 
@@ -97,6 +98,9 @@ the account menu.
 Maps saved before the redesign keep their data untouched; `src/editor/compat.ts` maps their
 legacy shapes, font sizes and branch widths to the current look when they're drawn.
 
+The invite email cannot use CSS variables, so `npm run tokens` (run automatically by `npm run build`)
+extracts the light-theme colours from `tokens.css` into `api/_tokens.json`, which the email reads.
+
 ## Performance tooling
 
 ```
@@ -104,6 +108,8 @@ npm run build && npx vite preview --port 4173 &
 npm run perf -- --sizes 5,100,500 --label mine   # frame times, render counts, typing latency
 npm run lighthouse -- --label mine               # Lighthouse over landing, My maps, editor
 npm run smoke                                    # scripted interaction checks
+node scripts/smoke-presence.mjs                  # two tabs: avatars, live cursor, remote selection
+npm run lighthouse -- --preset mobile --label m  # slow 4G + 4× CPU slowdown
 node scripts/axe.mjs                             # axe accessibility scan
 node scripts/seed.mjs 500 > map.json             # a 500-idea map for manual testing
 ```
