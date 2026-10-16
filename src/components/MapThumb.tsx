@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { MapDoc } from '../lib/types';
 import { displayHex } from '../lib/palette';
-import { estimateSize } from '../editor/viewport';
+import { estimateSize } from '../editor/estimate';
 import { displayFontSize, isLegacy } from '../editor/compat';
 
 const W = 240;

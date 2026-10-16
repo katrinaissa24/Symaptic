@@ -6,8 +6,9 @@ import { PageSkeleton } from './components/Skeleton';
 import { OfflineBanner } from './components/OfflineBanner';
 
 // Each page is its own chunk: My Maps never downloads the editor, the landing page never
-// downloads React Flow.
-const Landing = lazy(() => import('./pages/Landing'));
+// downloads React Flow. The landing page itself is tiny and ships with the entry so the first
+// visit needs no extra round trip.
+import Landing from './pages/Landing';
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const EditorPage = lazy(() => import('./pages/EditorPage'));

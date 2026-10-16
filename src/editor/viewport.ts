@@ -1,5 +1,5 @@
 import { getViewportForBounds, type Node, type ReactFlowInstance, type Rect, type Viewport } from '@xyflow/react';
-import type { MapNode } from '../lib/types';
+export { estimateSize } from './estimate';
 
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 2.5;
@@ -7,18 +7,6 @@ export const FIT_PADDING = 0.1;
 export const TWEEN_MS = 250;
 
 export const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-
-/** Rough size of an idea before it has been measured. Used for fitting, visibility and placement. */
-export function estimateSize(n: MapNode): { w: number; h: number } {
-  const fs = n.fontSize || 14;
-  const lines = n.text.split('\n');
-  const longest = Math.max(1, ...lines.map((l) => l.length));
-  const charW = fs * (n.bold ? 0.6 : 0.55);
-  const w = Math.min(280, Math.max(48, longest * charW + 36));
-  const wrapped = lines.reduce((a, l) => a + Math.max(1, Math.ceil((l.length * charW) / (280 - 36))), 0);
-  const h = Math.round(wrapped * fs * 1.25 + (n.root ? 28 : 18));
-  return { w: Math.round(w), h };
-}
 
 export function nodeRect(n: Node): Rect {
   return {

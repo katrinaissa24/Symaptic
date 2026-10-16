@@ -1,5 +1,4 @@
-import { collection, deleteDoc, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { getFirebase, isFirebaseConfigured } from './firebase';
 import { PALETTE } from './palette';
 import type { AppUser } from './types';
 
@@ -95,24 +94,34 @@ function makeSession(entry: PresenceEntry, send: (e: PresenceEntry) => void, rem
 }
 
 function firebaseJoin(docId: string, entry: PresenceEntry): PresenceSession {
-  const ref = doc(db!, 'docs', docId, 'presence', entry.clientId);
+  const fb = getFirebase();
   const base = makeSession(
     entry,
-    (e) => void setDoc(ref, e, { merge: true }).catch(() => {}),
-    () => void deleteDoc(ref).catch(() => {}),
+    (e) => void fb.then(({ db, F }) => F.setDoc(F.doc(db, 'docs', docId, 'presence', entry.clientId), e, { merge: true })).catch(() => {}),
+    () => void fb.then(({ db, F }) => F.deleteDoc(F.doc(db, 'docs', docId, 'presence', entry.clientId))).catch(() => {}),
   );
   return {
     ...base,
     subscribe(cb) {
       let latest = new Map<string, PresenceEntry>();
+      let unsub: (() => void) | null = null;
+      let cancelled = false;
       const emit = () => cb(fresh(latest.values()));
-      const unsub = onSnapshot(collection(db!, 'docs', docId, 'presence'), (snap) => {
-        latest = new Map(snap.docs.map((d) => [d.id, d.data() as PresenceEntry]));
-        emit();
-      }, () => {});
+      fb.then(({ db, F }) => {
+        if (cancelled) return;
+        unsub = F.onSnapshot(
+          F.collection(db, 'docs', docId, 'presence'),
+          (snap) => {
+            latest = new Map(snap.docs.map((d) => [d.id, d.data() as PresenceEntry]));
+            emit();
+          },
+          () => {},
+        );
+      }).catch(() => {});
       const sweep = window.setInterval(emit, SWEEP_MS);
       return () => {
-        unsub();
+        cancelled = true;
+        unsub?.();
         clearInterval(sweep);
       };
     },

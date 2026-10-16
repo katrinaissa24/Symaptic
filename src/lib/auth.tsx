@@ -1,22 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import {
-  browserPopupRedirectResolver,
-  EmailAuthProvider,
-  GoogleAuthProvider,
-  isSignInWithEmailLink,
-  linkWithCredential,
-  linkWithPopup,
-  onAuthStateChanged,
-  sendSignInLinkToEmail,
-  signInAnonymously,
-  signInWithCredential,
-  signInWithEmailLink,
-  signInWithPopup,
-  signOut as fbSignOut,
-  updateProfile,
-  type User,
-} from 'firebase/auth';
-import { auth, isFirebaseConfigured } from './firebase';
+import type { User } from 'firebase/auth';
+import { getFirebase, isFirebaseConfigured } from './firebase';
 import type { AppUser } from './types';
 
 interface AuthState {
@@ -72,19 +56,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    return onAuthStateChanged(auth!, (u) => {
-      setUser(u ? toAppUser(u) : null);
-      setLoading(false);
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    getFirebase().then(({ auth, A }) => {
+      if (cancelled) return;
+      unsub = A.onAuthStateChanged(auth, (u) => {
+        setUser(u ? toAppUser(u) : null);
+        setLoading(false);
+      });
     });
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
   /** Re-read the Firebase user after linking/renaming (onAuthStateChanged doesn't fire for those). */
   const refresh = async () => {
-    const u = auth!.currentUser;
+    const { auth } = await getFirebase();
+    const u = auth.currentUser;
     if (!u) return;
     await u.reload();
     await u.getIdToken(true); // fresh token so Firestore sees the new email
-    setUser(toAppUser(auth!.currentUser!));
+    setUser(toAppUser(auth.currentUser!));
   };
 
   const saveDemo = (u: AppUser) => {
@@ -102,46 +96,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         saveDemo(u);
         return u;
       }
-      const cred = await signInAnonymously(auth!);
-      await updateProfile(cred.user, { displayName: guestName() });
+      const { auth, A } = await getFirebase();
+      const cred = await A.signInAnonymously(auth);
+      await A.updateProfile(cred.user, { displayName: guestName() });
       const u = toAppUser(cred.user);
       setUser(u);
       return u;
     },
     async signInWithGoogle() {
-      const provider = new GoogleAuthProvider();
-      const cur = auth!.currentUser;
+      const { auth, A } = await getFirebase();
+      const provider = new A.GoogleAuthProvider();
+      const cur = auth.currentUser;
       if (cur?.isAnonymous) {
         // Upgrade the guest account in place so their maps come along.
         try {
-          await linkWithPopup(cur, provider, browserPopupRedirectResolver);
+          await A.linkWithPopup(cur, provider, A.browserPopupRedirectResolver);
           await refresh();
           return;
         } catch (e) {
           if (!alreadyUsed(e)) throw e;
-          const c = GoogleAuthProvider.credentialFromError(e as never);
+          const c = A.GoogleAuthProvider.credentialFromError(e as never);
           if (c) {
-            await signInWithCredential(auth!, c);
+            await A.signInWithCredential(auth, c);
             return;
           }
         }
       }
-      await signInWithPopup(auth!, provider, browserPopupRedirectResolver);
+      await A.signInWithPopup(auth, provider, A.browserPopupRedirectResolver);
     },
     async sendMagicLink(email, next) {
+      const { auth, A } = await getFirebase();
       const url = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
-      await sendSignInLinkToEmail(auth!, email, { url, handleCodeInApp: true });
+      await A.sendSignInLinkToEmail(auth, email, { url, handleCodeInApp: true });
       localStorage.setItem(EMAIL_KEY, email);
     },
     async completeMagicLink(emailOverride) {
-      if (!isFirebaseConfigured || !isSignInWithEmailLink(auth!, window.location.href)) return 'not-a-link';
+      if (!isFirebaseConfigured) return 'not-a-link';
+      const { auth, A } = await getFirebase();
+      if (!A.isSignInWithEmailLink(auth, window.location.href)) return 'not-a-link';
       const email = emailOverride || localStorage.getItem(EMAIL_KEY);
       if (!email) return 'need-email';
-      await auth!.authStateReady();
-      const cur = auth!.currentUser;
+      await auth.authStateReady();
+      const cur = auth.currentUser;
       if (cur?.isAnonymous) {
         try {
-          await linkWithCredential(cur, EmailAuthProvider.credentialWithLink(email, window.location.href));
+          await A.linkWithCredential(cur, A.EmailAuthProvider.credentialWithLink(email, window.location.href));
           await refresh();
           localStorage.removeItem(EMAIL_KEY);
           return 'done';
@@ -150,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!alreadyUsed(e)) throw e;
         }
       }
-      await signInWithEmailLink(auth!, email, window.location.href);
+      await A.signInWithEmailLink(auth, email, window.location.href);
       localStorage.removeItem(EMAIL_KEY);
       return 'done';
     },
@@ -158,21 +157,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const n = name.trim().slice(0, 40);
       if (!n || !user) return;
       if (!isFirebaseConfigured) return saveDemo({ ...user, name: n });
-      await updateProfile(auth!.currentUser!, { displayName: n });
+      const { auth, A } = await getFirebase();
+      await A.updateProfile(auth.currentUser!, { displayName: n });
       await refresh();
     },
     signInDemo(name, email) {
       saveDemo({ uid: 'demo-' + email.toLowerCase(), email: email.toLowerCase(), name, isAnonymous: false });
     },
     async signOut() {
-      if (isFirebaseConfigured) await fbSignOut(auth!);
-      else {
+      if (isFirebaseConfigured) {
+        const { auth, A } = await getFirebase();
+        await A.signOut(auth);
+      } else {
         localStorage.removeItem(DEMO_KEY);
         setUser(null);
       }
     },
     async getIdToken() {
-      return isFirebaseConfigured && auth!.currentUser ? auth!.currentUser.getIdToken() : null;
+      if (!isFirebaseConfigured) return null;
+      const { auth } = await getFirebase();
+      return auth.currentUser ? auth.currentUser.getIdToken() : null;
     },
   };
 

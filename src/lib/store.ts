@@ -1,16 +1,4 @@
-import {
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  getDocs,
-  onSnapshot,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { getFirebase, isFirebaseConfigured } from './firebase';
 import type { AccessRole, AppUser, Graph, LinkRole, MapDoc, MapNode, Patch, Role } from './types';
 import { ROOT_COLOR } from './palette';
 
@@ -102,14 +90,14 @@ const pending = new Map<string, MapDoc>();
 
 const firebaseStore: Store = {
   async listOwned(user) {
-    const snap = await getDocs(query(collection(db!, 'docs'), where('ownerId', '==', user.uid)));
+    const { db, F } = await getFirebase();
+    const snap = await F.getDocs(F.query(F.collection(db, 'docs'), F.where('ownerId', '==', user.uid)));
     return snap.docs.map((s) => ({ ...(s.data() as MapDoc), id: s.id }));
   },
   async listShared(user) {
     if (!user.email) return []; // guests have no email to share with
-    const snap = await getDocs(
-      query(collection(db!, 'docs'), where('memberEmails', 'array-contains', user.email.toLowerCase())),
-    );
+    const { db, F } = await getFirebase();
+    const snap = await F.getDocs(F.query(F.collection(db, 'docs'), F.where('memberEmails', 'array-contains', user.email.toLowerCase())));
     return snap.docs.map((s) => ({ ...(s.data() as MapDoc), id: s.id }));
   },
   createOptimistic(user, title, graph) {
@@ -118,7 +106,9 @@ const firebaseStore: Store = {
     const { id: _omit, ...data } = d;
     void _omit;
     pending.set(id, d);
-    const done = setDoc(doc(db!, 'docs', id), clean(data)).finally(() => pending.delete(id));
+    const done = getFirebase()
+      .then(({ db, F }) => F.setDoc(F.doc(db, 'docs', id), clean(data)))
+      .finally(() => pending.delete(id));
     return { id, done };
   },
   async create(user, title, graph) {
@@ -127,7 +117,8 @@ const firebaseStore: Store = {
     return r.id;
   },
   async remove(id) {
-    await deleteDoc(doc(db!, 'docs', id));
+    const { db, F } = await getFirebase();
+    await F.deleteDoc(F.doc(db, 'docs', id));
   },
   patchMeta(id, patch) {
     return firebaseStore.applyPatch(id, patch);
@@ -135,19 +126,32 @@ const firebaseStore: Store = {
   subscribe(id, cb) {
     const p = pending.get(id);
     if (p) queueMicrotask(() => cb(p));
-    return onSnapshot(
-      doc(db!, 'docs', id),
-      (s) => {
-        if (!s.exists() && pending.has(id)) return; // still being written
-        cb(s.exists() ? ({ ...(s.data() as MapDoc), id: s.id }) : null);
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    getFirebase().then(
+      ({ db, F }) => {
+        if (cancelled) return;
+        unsub = F.onSnapshot(
+          F.doc(db, 'docs', id),
+          (s) => {
+            if (!s.exists() && pending.has(id)) return; // still being written
+            cb(s.exists() ? ({ ...(s.data() as MapDoc), id: s.id }) : null);
+          },
+          (err) => cb(null, err),
+        );
       },
-      (err) => cb(null, err),
+      (err: Error) => cb(null, err),
     );
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   },
   async applyPatch(id, patch) {
+    const { db, F } = await getFirebase();
     const data: Record<string, unknown> = { updatedAt: Date.now() };
-    for (const [k, v] of Object.entries(patch)) data[k] = v === null ? deleteField() : clean(v);
-    await updateDoc(doc(db!, 'docs', id), data);
+    for (const [k, v] of Object.entries(patch)) data[k] = v === null ? F.deleteField() : clean(v);
+    await F.updateDoc(F.doc(db, 'docs', id), data);
   },
 };
 
